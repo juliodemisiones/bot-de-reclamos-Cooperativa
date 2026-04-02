@@ -12,7 +12,7 @@ function decryptRequest(body, privateKey) {
         { 
             key: privateKey, 
             padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
-            oaepHash: "sha256" // Añadimos esto para asegurar compatibilidad con Meta
+            oaepHash: "sha256"
         },
         Buffer.from(encrypted_aes_key, 'base64')
     );
@@ -28,16 +28,23 @@ app.post('/', async (req, res) => {
             return res.json({ version: "3.0", data: { status: "active" } });
         }
 
-        // --- LÓGICA DE LIMPIEZA DE CLAVE ---
-        let rawKey = process.env.PRIVATE_KEY.replace(/\\n/g, '\n').trim();
+        // --- SUPER LÓGICA DE LIMPIEZA DE CLAVE ---
+        let rawKey = process.env.PRIVATE_KEY.trim();
         
+        // Si no tiene los guiones, asumimos que es Base64 y la convertimos correctamente
         if (!rawKey.includes('BEGIN PRIVATE KEY')) {
-            rawKey = `-----BEGIN PRIVATE KEY-----\n${rawKey}\n-----END PRIVATE KEY-----`;
+            try {
+                // Intentamos leerla como Base64 por si viene de Replit
+                const buffer = Buffer.from(rawKey, 'base64');
+                rawKey = `-----BEGIN PRIVATE KEY-----\n${buffer.toString('base64').match(/.{1,64}/g).join('\n')}\n-----END PRIVATE KEY-----`;
+            } catch (e) {
+                // Si falla, solo le ponemos los encabezados
+                rawKey = `-----BEGIN PRIVATE KEY-----\n${rawKey}\n-----END PRIVATE KEY-----`;
+            }
         }
-        // ----------------------------------
+        // ------------------------------------------
 
         const decryptedData = decryptRequest(req.body, rawKey);
-
         await axios.post(process.env.GOOGLE_SHEET_URL, decryptedData);
 
         res.json({
@@ -53,4 +60,4 @@ app.post('/', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`Puente de la Cooperativa listo en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`Puente de la Cooperativa listo`));
