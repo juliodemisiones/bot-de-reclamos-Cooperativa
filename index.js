@@ -36,11 +36,13 @@ app.get('/webhook', (req, res) => {
 // 2. Procesamiento del Flow (POST)
 // ======================
 app.post('/webhook', (req, res) => {
-  const body = req.body;
+  const body = req.body || {};
+
+  console.log("📥 Body recibido:", JSON.stringify(body, null, 2));
 
   // ==================== HEALTH CHECK (PING) ====================
-  if (body.action === "ping" || (body.version === "3.0" && body.action === "ping")) {
-    console.log("🏓 Health Check (ping) recibido - Respondiendo con status active");
+  if (body.action === "ping" || body.version === "3.0" && body.action === "ping") {
+    console.log("🏓 Health Check (ping) detectado - Respondiendo correctamente");
 
     const pingResponse = {
       version: "3.0",
@@ -49,7 +51,7 @@ app.post('/webhook', (req, res) => {
       }
     };
 
-    // Respuesta SIMPLE (JSON) - NO encriptada
+    // Respuesta SIMPLE (JSON plano) - NO encriptada
     return res.status(200).json(pingResponse);
   }
 
@@ -74,7 +76,7 @@ app.post('/webhook', (req, res) => {
       Buffer.from(encrypted_aes_key, 'base64')
     );
 
-    // 2. Desencriptar datos del Flow
+    // 2. Desencriptar datos
     const flowBuffer = Buffer.from(encrypted_flow_data, 'base64');
     const authTag = flowBuffer.slice(-16);
     const encryptedData = flowBuffer.slice(0, -16);
@@ -92,7 +94,7 @@ app.post('/webhook', (req, res) => {
 
     const flowToken = flowData.flow_token || flowData.flowToken || "";
 
-    // 3. Respuesta para pantalla SUCCESS
+    // 3. Respuesta para SUCCESS
     const responsePayload = {
       screen: "SUCCESS",
       data: {
@@ -105,7 +107,7 @@ app.post('/webhook', (req, res) => {
       }
     };
 
-    // 4. Encriptar respuesta (solo para data_exchange)
+    // 4. Encriptar con IV flip
     const flippedIv = Buffer.from(ivBuffer).map(byte => byte ^ 0xFF);
 
     const cipher = crypto.createCipheriv('aes-128-gcm', decryptedAesKey, flippedIv);
