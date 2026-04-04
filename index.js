@@ -31,12 +31,7 @@ app.post('/webhook', (req, res) => {
 
     if (encrypted_flow_data) {
         try {
-            if (!PRIVATE_KEY) {
-                console.error("ERROR: No se encontró la PRIVATE_KEY en Render.");
-                return res.sendStatus(500);
-            }
-
-            // A. DESCIFRAR CLAVE AES (ENTRADA)
+            // 1. DESCIFRAR CLAVE AES
             const decryptedAesKey = crypto.privateDecrypt(
                 {
                     key: PRIVATE_KEY,
@@ -46,7 +41,7 @@ app.post('/webhook', (req, res) => {
                 Buffer.from(encrypted_aes_key, 'base64')
             );
 
-            // B. DESCIFRAR DATOS DEL FLOW
+            // 2. DESCIFRAR DATOS DEL FLOW
             const flowBuffer = Buffer.from(encrypted_flow_data, 'base64');
             const tagEntrada = flowBuffer.slice(-16);
             const dataEntrada = flowBuffer.slice(0, -16);
@@ -57,10 +52,9 @@ app.post('/webhook', (req, res) => {
             decrypted += decipher.final('utf8');
             const flowResponse = JSON.parse(decrypted);
             
-            console.log('Reclamo Cooperativa recibido:', flowResponse);
+            console.log('Reclamo recibido:', flowResponse);
 
-            // C. PREPARAR RESPUESTA JSON
-            // IMPORTANTE: El nombre "SUCCESS" debe ser igual al de tu pantalla en el JSON del Flow
+            // 3. RESPUESTA (Asegúrate que el nombre de la pantalla sea el correcto)
             const responseBody = {
                 version: "2.1",
                 screen: "SUCCESS", 
@@ -70,6 +64,36 @@ app.post('/webhook', (req, res) => {
                     }
                 }
             };
+
+            // 4. ENCRIPTAR RESPUESTA (Protocolo Estricto)
+            const responseIv = crypto.randomBytes(12);
+            const cipher = crypto.createCipheriv('aes-128-gcm', decryptedAesKey, responseIv);
+            
+            const encryptedBody = Buffer.concat([
+                cipher.update(JSON.stringify(responseBody), 'utf-8'),
+                cipher.final()
+            ]);
+            
+            const tagSalida = cipher.getAuthTag();
+
+            // CONCATENACIÓN MANUAL DE BUFFERS (Datos + Tag + IV)
+            const finalBuffer = Buffer.concat([
+                encryptedBody,
+                tagSalida,
+                responseIv
+            ]);
+
+            // IMPORTANTE: Enviar el Buffer directamente como base64
+            res.status(200).send(finalBuffer.toString('base64'));
+
+        } catch (error) {
+            console.error('Error de cifrado:', error);
+            res.status(500).send("Internal Server Error");
+        }
+    } else {
+        res.status(200).send('EVENT_RECEIVED');
+    }
+});
 
             // D. ENCRIPTAR RESPUESTA (SALIDA)
             const responseIv = crypto.randomBytes(12);
