@@ -1,34 +1,9 @@
-const express = require('express');
-const bodyParser = require('body-parser');
-const crypto = require('crypto');
-const app = express().use(bodyParser.json());
-
-const port = process.env.PORT || 3000;
-const VERIFY_TOKEN = "cooperativa90";
-
-// Carga la llave privada desde Render
-const PRIVATE_KEY = process.env.PRIVATE_KEY ? process.env.PRIVATE_KEY.replace(/\\n/g, '\n') : null;
-
-// 1. VALIDACIÓN (GET)
-app.get('/webhook', (req, res) => {
-    const mode = req.query['hub.mode'];
-    const token = req.query['hub.verify_token'];
-    const challenge = req.query['hub.challenge'];
-
-    if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-        res.status(200).send(challenge);
-    } else {
-        res.sendStatus(403);
-    }
-});
-
-// 2. PROCESAMIENTO DE FLOWS (POST)
 app.post('/webhook', (req, res) => {
     const { encrypted_flow_data, encrypted_aes_key, initial_vector } = req.body;
 
     if (encrypted_flow_data) {
         try {
-            // A. DESCIFRAR LA CLAVE AES (ENTRADA)
+            // 1. DESCIFRAR CLAVE AES
             const decryptedAesKey = crypto.privateDecrypt(
                 {
                     key: PRIVATE_KEY,
@@ -38,20 +13,20 @@ app.post('/webhook', (req, res) => {
                 Buffer.from(encrypted_aes_key, 'base64')
             );
 
-            // B. DESCIFRAR LOS DATOS DEL FLOW
+            // 2. DESCIFRAR DATOS DEL FLOW
             const flowBuffer = Buffer.from(encrypted_flow_data, 'base64');
-            const tag = flowBuffer.slice(-16);
-            const data = flowBuffer.slice(0, -16);
+            const tagEntrada = flowBuffer.slice(-16);
+            const dataEntrada = flowBuffer.slice(0, -16);
             const decipher = crypto.createDecipheriv('aes-128-gcm', decryptedAesKey, Buffer.from(initial_vector, 'base64'));
-            decipher.setAuthTag(tag);
+            decipher.setAuthTag(tagEntrada);
             
-            let decrypted = decipher.update(data, 'binary', 'utf8');
+            let decrypted = decipher.update(dataEntrada, 'binary', 'utf8');
             decrypted += decipher.final('utf8');
             const flowResponse = JSON.parse(decrypted);
             
-            console.log('Reclamo recibido:', flowResponse);
+            console.log('Reclamo Cooperativa:', flowResponse);
 
-            // C. PREPARAR RESPUESTA JSON
+            // 3. PREPARAR RESPUESTA
             const responseBody = {
                 version: "2.1",
                 screen: "SUCCESS",
@@ -62,17 +37,26 @@ app.post('/webhook', (req, res) => {
                 }
             };
 
-            // D. ENCRIPTAR RESPUESTA (SALIDA) - ¡Esto es lo que faltaba!
+            // 4. ENCRIPTAR RESPUESTA (Ajustado para Meta)
             const responseIv = crypto.randomBytes(12);
             const cipher = crypto.createCipheriv('aes-128-gcm', decryptedAesKey, responseIv);
-            let encryptedResponse = cipher.update(JSON.stringify(responseBody), 'utf8', 'base64');
-            encryptedResponse += cipher.final('base64');
-            const responseTag = cipher.getAuthTag().toString('base64');
-
-            // Enviamos el paquete completo en Base64 (Datos + Tag + IV)
-            const finalB64 = Buffer.from(encryptedResponse + responseTag + responseIv.toString('base64'), 'utf8').toString('base64');
             
-            res.status(200).send(finalB64);
+            const encryptedBuffer = Buffer.concat([
+                cipher.update(JSON.stringify(responseBody), 'utf8'),
+                cipher.final()
+            ]);
+            
+            const tagSalida = cipher.getAuthTag();
+
+            // CONCATENACIÓN CRÍTICA: Datos + Tag + IV
+            const finalResponseBuffer = Buffer.concat([
+                encryptedBuffer,
+                tagSalida,
+                responseIv
+            ]);
+
+            // Enviamos el Buffer completo como un único string Base64
+            res.status(200).send(finalResponseBuffer.toString('base64'));
 
         } catch (error) {
             console.error('Error de cifrado:', error);
@@ -82,5 +66,3 @@ app.post('/webhook', (req, res) => {
         res.status(200).send('EVENT_RECEIVED');
     }
 });
-
-app.listen(port, () => console.log(`Servidor de la Cooperativa en puerto ${port}`));
