@@ -8,17 +8,17 @@ app.use(bodyParser.json({ limit: '10mb' }));
 const port = process.env.PORT || 3000;
 const VERIFY_TOKEN = "cooperativa90";
 
-// Clave privada desde variables de entorno de Render
+// Clave privada
 let PRIVATE_KEY = process.env.PRIVATE_KEY
   ? process.env.PRIVATE_KEY.replace(/\\n/g, '\n')
   : null;
 
 if (!PRIVATE_KEY) {
-  console.error("❌ PRIVATE_KEY no está configurada en las variables de entorno de Render");
+  console.error("❌ PRIVATE_KEY no está configurada en Render");
 }
 
 // ======================
-// 1. Verificación del Webhook (GET)
+// 1. Verificación GET
 // ======================
 app.get('/webhook', (req, res) => {
   const mode = req.query['hub.mode'];
@@ -38,15 +38,14 @@ app.get('/webhook', (req, res) => {
 app.post('/webhook', (req, res) => {
   const { encrypted_flow_data, encrypted_aes_key, initial_vector } = req.body;
 
-  // Si no hay datos encriptados → respuesta simple (para otros eventos)
   if (!encrypted_flow_data || !encrypted_aes_key || !initial_vector) {
     return res.status(200).send('EVENT_RECEIVED');
   }
 
   try {
-    console.log("🔐 Recibiendo datos encriptados del Flow...");
+    console.log("🔐 Recibiendo datos encriptados...");
 
-    // PASO 1: Desencriptar la clave AES con tu clave privada RSA
+    // 1. Desencriptar AES Key
     const decryptedAesKey = crypto.privateDecrypt(
       {
         key: PRIVATE_KEY,
@@ -56,7 +55,7 @@ app.post('/webhook', (req, res) => {
       Buffer.from(encrypted_aes_key, 'base64')
     );
 
-    // PASO 2: Desencriptar los datos del Flow (AES-128-GCM)
+    // 2. Desencriptar datos del Flow
     const flowBuffer = Buffer.from(encrypted_flow_data, 'base64');
     const authTag = flowBuffer.slice(-16);
     const encryptedData = flowBuffer.slice(0, -16);
@@ -70,28 +69,29 @@ app.post('/webhook', (req, res) => {
 
     const flowData = JSON.parse(decrypted.toString('utf8'));
 
-    console.log('✅ Datos recibidos del formulario:', flowData);
+    console.log('✅ Flow Data recibido:', flowData);
 
-    // ======================
-    // PASO 3: Preparar respuesta CORRECTA para pantalla SUCCESS
-    // ======================
-    const flowToken = flowData.flow_token || flowData.flowToken || "";
+    // === CAMBIO IMPORTANTE: Extraer flow_token de forma más robusta ===
+    const flowToken = flowData.flow_token || flowData.flowToken || flowData.data?.flow_token || "";
 
+    if (!flowToken) {
+      console.warn("⚠️ flow_token vacío o no encontrado");
+    }
+
+    // 3. Respuesta CORRECTA para pantalla SUCCESS (terminal)
     const responsePayload = {
       screen: "SUCCESS",
       data: {
         extension_message_response: {
           params: {
-            flow_token: flowToken,
+            flow_token: flowToken,                    // ← debe venir lleno
             mensaje_final: "Su reclamo ha sido registrado correctamente en el sistema."
           }
         }
       }
     };
 
-    // ======================
-    // PASO 4: Encriptar la respuesta correctamente (con IV Flip)
-    // ======================
+    // 4. Encriptar respuesta (con IV flip)
     const flippedIv = Buffer.from(ivBuffer).map(byte => byte ^ 0xFF);
 
     const cipher = crypto.createCipheriv('aes-128-gcm', decryptedAesKey, flippedIv);
@@ -102,7 +102,6 @@ app.post('/webhook', (req, res) => {
       cipher.getAuthTag()
     ]);
 
-    // Enviar como base64 (esto es lo que Meta espera)
     res.status(200).send(encryptedResponse.toString('base64'));
 
   } catch (error) {
