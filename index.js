@@ -36,14 +36,31 @@ app.get('/webhook', (req, res) => {
 // 2. Procesamiento del Flow (POST)
 // ======================
 app.post('/webhook', (req, res) => {
-  const { encrypted_flow_data, encrypted_aes_key, initial_vector } = req.body;
+  const body = req.body;
+
+  // === NUEVO: Detectar Health Check (ping) ===
+  if (body.action === "ping" || (body.version === "3.0" && body.action === "ping")) {
+    console.log("🏓 Health Check (ping) recibido - Respondiendo correctamente");
+    
+    const pingResponse = {
+      version: "3.0",
+      data: {
+        status: "active"
+      }
+    };
+
+    return res.status(200).json(pingResponse);   // ← Respuesta SIMPLE (JSON)
+  }
+
+  // Si NO es ping → es un data_exchange normal (con encriptación)
+  const { encrypted_flow_data, encrypted_aes_key, initial_vector } = body;
 
   if (!encrypted_flow_data || !encrypted_aes_key || !initial_vector) {
     return res.status(200).send('EVENT_RECEIVED');
   }
 
   try {
-    console.log("🔐 Recibiendo datos encriptados...");
+    console.log("🔐 Recibiendo datos encriptados del Flow (data_exchange)...");
 
     // 1. Desencriptar AES Key
     const decryptedAesKey = crypto.privateDecrypt(
@@ -55,7 +72,7 @@ app.post('/webhook', (req, res) => {
       Buffer.from(encrypted_aes_key, 'base64')
     );
 
-    // 2. Desencriptar datos del Flow
+    // 2. Desencriptar datos
     const flowBuffer = Buffer.from(encrypted_flow_data, 'base64');
     const authTag = flowBuffer.slice(-16);
     const encryptedData = flowBuffer.slice(0, -16);
@@ -69,21 +86,9 @@ app.post('/webhook', (req, res) => {
 
     const flowData = JSON.parse(decrypted.toString('utf8'));
 
-    // ==================== LOGS IMPORTANTES ====================
-    console.log('✅ Flow Data completo recibido:', JSON.stringify(flowData, null, 2));
+    console.log('✅ Flow Data recibido:', JSON.stringify(flowData, null, 2));
 
-    // Extraer flow_token de todas las formas posibles
-    let flowToken = "";
-    if (flowData.flow_token) flowToken = flowData.flow_token;
-    else if (flowData.flowToken) flowToken = flowData.flowToken;
-    else if (flowData.data && flowData.data.flow_token) flowToken = flowData.data.flow_token;
-    else if (flowData.data && flowData.data.flowToken) flowToken = flowData.data.flowToken;
-
-    console.log(`🔑 Flow Token extraído: "${flowToken}"`);
-
-    if (!flowToken) {
-      console.warn("⚠️ No se pudo extraer el flow_token. La respuesta puede fallar.");
-    }
+    const flowToken = flowData.flow_token || flowData.flowToken || "";
 
     // 3. Respuesta para SUCCESS
     const responsePayload = {
@@ -98,7 +103,7 @@ app.post('/webhook', (req, res) => {
       }
     };
 
-    // 4. Encriptar con IV flip
+    // 4. Encriptar respuesta
     const flippedIv = Buffer.from(ivBuffer).map(byte => byte ^ 0xFF);
 
     const cipher = crypto.createCipheriv('aes-128-gcm', decryptedAesKey, flippedIv);
