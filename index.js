@@ -38,10 +38,10 @@ app.get('/webhook', (req, res) => {
 app.post('/webhook', (req, res) => {
   const body = req.body;
 
-  // === NUEVO: Detectar Health Check (ping) ===
+  // ==================== HEALTH CHECK (PING) ====================
   if (body.action === "ping" || (body.version === "3.0" && body.action === "ping")) {
-    console.log("🏓 Health Check (ping) recibido - Respondiendo correctamente");
-    
+    console.log("🏓 Health Check (ping) recibido - Respondiendo con status active");
+
     const pingResponse = {
       version: "3.0",
       data: {
@@ -49,18 +49,20 @@ app.post('/webhook', (req, res) => {
       }
     };
 
-    return res.status(200).json(pingResponse);   // ← Respuesta SIMPLE (JSON)
+    // Respuesta SIMPLE (JSON) - NO encriptada
+    return res.status(200).json(pingResponse);
   }
 
-  // Si NO es ping → es un data_exchange normal (con encriptación)
+  // ==================== DATA_EXCHANGE NORMAL (encriptado) ====================
   const { encrypted_flow_data, encrypted_aes_key, initial_vector } = body;
 
   if (!encrypted_flow_data || !encrypted_aes_key || !initial_vector) {
+    console.log("⚠️ Petición sin datos encriptados");
     return res.status(200).send('EVENT_RECEIVED');
   }
 
   try {
-    console.log("🔐 Recibiendo datos encriptados del Flow (data_exchange)...");
+    console.log("🔐 Procesando data_exchange encriptado...");
 
     // 1. Desencriptar AES Key
     const decryptedAesKey = crypto.privateDecrypt(
@@ -72,7 +74,7 @@ app.post('/webhook', (req, res) => {
       Buffer.from(encrypted_aes_key, 'base64')
     );
 
-    // 2. Desencriptar datos
+    // 2. Desencriptar datos del Flow
     const flowBuffer = Buffer.from(encrypted_flow_data, 'base64');
     const authTag = flowBuffer.slice(-16);
     const encryptedData = flowBuffer.slice(0, -16);
@@ -90,7 +92,7 @@ app.post('/webhook', (req, res) => {
 
     const flowToken = flowData.flow_token || flowData.flowToken || "";
 
-    // 3. Respuesta para SUCCESS
+    // 3. Respuesta para pantalla SUCCESS
     const responsePayload = {
       screen: "SUCCESS",
       data: {
@@ -103,7 +105,7 @@ app.post('/webhook', (req, res) => {
       }
     };
 
-    // 4. Encriptar respuesta
+    // 4. Encriptar respuesta (solo para data_exchange)
     const flippedIv = Buffer.from(ivBuffer).map(byte => byte ^ 0xFF);
 
     const cipher = crypto.createCipheriv('aes-128-gcm', decryptedAesKey, flippedIv);
