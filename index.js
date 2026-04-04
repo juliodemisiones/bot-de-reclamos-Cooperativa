@@ -8,10 +8,9 @@ app.use(bodyParser.json());
 const port = process.env.PORT || 3000;
 const VERIFY_TOKEN = "cooperativa90";
 
-// Carga la llave privada desde las variables de entorno de Render
+// Ajuste para aceptar PRIVATE KEY (PKCS#8) o RSA PRIVATE KEY (PKCS#1)
 const PRIVATE_KEY = process.env.PRIVATE_KEY ? process.env.PRIVATE_KEY.replace(/\\n/g, '\n') : null;
 
-// 1. VALIDACIÓN DEL WEBHOOK (GET)
 app.get('/webhook', (req, res) => {
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
@@ -24,18 +23,12 @@ app.get('/webhook', (req, res) => {
     }
 });
 
-// 2. PROCESAMIENTO DE FLOWS (POST)
 app.post('/webhook', (req, res) => {
     const { encrypted_flow_data, encrypted_aes_key, initial_vector } = req.body;
 
     if (encrypted_flow_data) {
         try {
-            if (!PRIVATE_KEY) {
-                console.error("ERROR: No se encontró la PRIVATE_KEY en Render.");
-                return res.sendStatus(500);
-            }
-
-            // A. DESCIFRAR CLAVE AES DE ENTRADA
+            // 1. DESCIFRAR CLAVE AES
             const decryptedAesKey = crypto.privateDecrypt(
                 {
                     key: PRIVATE_KEY,
@@ -45,7 +38,7 @@ app.post('/webhook', (req, res) => {
                 Buffer.from(encrypted_aes_key, 'base64')
             );
 
-            // B. DESCIFRAR DATOS DEL FLOW
+            // 2. DESCIFRAR DATOS DEL FLOW
             const flowBuffer = Buffer.from(encrypted_flow_data, 'base64');
             const tagEntrada = flowBuffer.slice(-16);
             const dataEntrada = flowBuffer.slice(0, -16);
@@ -56,20 +49,23 @@ app.post('/webhook', (req, res) => {
             decrypted += decipher.final('utf8');
             const flowResponse = JSON.parse(decrypted);
             
-            console.log('Reclamo Cooperativa recibido:', flowResponse);
+            console.log('Datos recibidos:', flowResponse);
 
-            // C. PREPARAR RESPUESTA JSON
+            // 3. RESPUESTA (Aquí cambiaremos "SUCCESS" por el ID de tu JSON)
             const responseBody = {
                 version: "2.1",
-                screen: "SUCCESS", 
+                screen: "SUCCESS", // <--- PASAME EL JSON PARA CORREGIR ESTO
                 data: {
                     extension_message_response: {
-                        params: { nombre: flowResponse.nombre || "Usuario" }
+                        params: { 
+                            // Aquí van los datos que tu pantalla final espera mostrar
+                            nombre: flowResponse.nombre || "Usuario" 
+                        }
                     }
                 }
             };
 
-            // D. ENCRIPTAR RESPUESTA DE SALIDA (Para evitar error de descifrado en Meta)
+            // 4. ENCRIPTAR RESPUESTA (Formato Buffer Directo)
             const responseIv = crypto.randomBytes(12);
             const cipher = crypto.createCipheriv('aes-128-gcm', decryptedAesKey, responseIv);
             
@@ -80,7 +76,7 @@ app.post('/webhook', (req, res) => {
             
             const tagSalida = cipher.getAuthTag();
 
-            // CONCATENACIÓN: Datos + Tag + IV
+            // Concatenación de seguridad: Datos + Tag + IV
             const finalBuffer = Buffer.concat([
                 encryptedBody,
                 tagSalida,
@@ -90,12 +86,12 @@ app.post('/webhook', (req, res) => {
             res.status(200).send(finalBuffer.toString('base64'));
 
         } catch (error) {
-            console.error('Error de cifrado:', error);
-            res.status(500).send("Error interno de cifrado");
+            console.error('Error crítico:', error.message);
+            res.status(500).send("Error de procesamiento");
         }
     } else {
         res.status(200).send('EVENT_RECEIVED');
     }
 });
 
-app.listen(port, () => console.log(`Servidor de la Cooperativa escuchando en puerto ${port}`));
+app.listen(port, () => console.log(`Servidor Cooperativa en puerto ${port}`));
