@@ -6,11 +6,12 @@ const app = express();
 app.use(bodyParser.json());
 
 const port = process.env.PORT || 3000;
-const VERIFY_TOKEN = "cooperativa90";
 
-// Ajuste para aceptar PRIVATE KEY (PKCS#8) o RSA PRIVATE KEY (PKCS#1)
+// Configuración de Seguridad
+const VERIFY_TOKEN = "cooperativa90"; // El que pusiste en Meta for Developers
 const PRIVATE_KEY = process.env.PRIVATE_KEY ? process.env.PRIVATE_KEY.replace(/\\n/g, '\n') : null;
 
+// Verificación del Webhook (GET)
 app.get('/webhook', (req, res) => {
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
@@ -23,12 +24,13 @@ app.get('/webhook', (req, res) => {
     }
 });
 
+// Procesamiento de Datos del Flujo (POST)
 app.post('/webhook', (req, res) => {
     const { encrypted_flow_data, encrypted_aes_key, initial_vector } = req.body;
 
     if (encrypted_flow_data) {
         try {
-            // 1. DESCIFRAR CLAVE AES
+            // 1. Descifrar la clave AES enviada por WhatsApp
             const decryptedAesKey = crypto.privateDecrypt(
                 {
                     key: PRIVATE_KEY,
@@ -38,7 +40,7 @@ app.post('/webhook', (req, res) => {
                 Buffer.from(encrypted_aes_key, 'base64')
             );
 
-            // 2. DESCIFRAR DATOS DEL FLOW
+            // 2. Descifrar el contenido del flujo
             const flowBuffer = Buffer.from(encrypted_flow_data, 'base64');
             const tagEntrada = flowBuffer.slice(-16);
             const dataEntrada = flowBuffer.slice(0, -16);
@@ -49,23 +51,21 @@ app.post('/webhook', (req, res) => {
             decrypted += decipher.final('utf8');
             const flowResponse = JSON.parse(decrypted);
             
-            console.log('Datos recibidos:', flowResponse);
+            console.log('--- RECLAMO RECIBIDO ---');
+            console.log(flowResponse);
 
-            // 3. RESPUESTA (Aquí cambiaremos "SUCCESS" por el ID de tu JSON)
+            // 3. Preparar la respuesta para el celular
+            // Aquí le decimos al flujo que salte a la pantalla "SUCCESS"
             const responseBody = {
-                version: "2.1",
-                screen: "SUCCESS", // <--- PASAME EL JSON PARA CORREGIR ESTO
+                version: "3.0",
+                screen: "SUCCESS", 
                 data: {
-                    extension_message_response: {
-                        params: { 
-                            // Aquí van los datos que tu pantalla final espera mostrar
-                            nombre: flowResponse.nombre || "Usuario" 
-                        }
-                    }
+                    mensaje_final: "Gracias por tu reporte. Un técnico revisará el caso.",
+                    numero_reclamo: Math.floor(Math.random() * 10000).toString()
                 }
             };
 
-            // 4. ENCRIPTAR RESPUESTA (Formato Buffer Directo)
+            // 4. Encriptar la respuesta de vuelta
             const responseIv = crypto.randomBytes(12);
             const cipher = crypto.createCipheriv('aes-128-gcm', decryptedAesKey, responseIv);
             
@@ -75,18 +75,12 @@ app.post('/webhook', (req, res) => {
             ]);
             
             const tagSalida = cipher.getAuthTag();
-
-            // Concatenación de seguridad: Datos + Tag + IV
-            const finalBuffer = Buffer.concat([
-                encryptedBody,
-                tagSalida,
-                responseIv
-            ]);
+            const finalBuffer = Buffer.concat([encryptedBody, tagSalida, responseIv]);
 
             res.status(200).send(finalBuffer.toString('base64'));
 
         } catch (error) {
-            console.error('Error crítico:', error.message);
+            console.error('ERROR EN EL BACKEND:', error.message);
             res.status(500).send("Error de procesamiento");
         }
     } else {
@@ -94,4 +88,4 @@ app.post('/webhook', (req, res) => {
     }
 });
 
-app.listen(port, () => console.log(`Servidor Cooperativa en puerto ${port}`));
+app.listen(port, () => console.log(`Servidor de la Cooperativa corriendo en puerto ${port}`));
