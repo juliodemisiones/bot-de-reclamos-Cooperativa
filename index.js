@@ -9,8 +9,8 @@ const port = process.env.PORT || 3000;
 const VERIFY_TOKEN = "cooperativa90";
 
 // Clave privada desde variables de entorno de Render
-let PRIVATE_KEY = process.env.PRIVATE_KEY 
-  ? process.env.PRIVATE_KEY.replace(/\\n/g, '\n') 
+let PRIVATE_KEY = process.env.PRIVATE_KEY
+  ? process.env.PRIVATE_KEY.replace(/\\n/g, '\n')
   : null;
 
 if (!PRIVATE_KEY) {
@@ -60,7 +60,6 @@ app.post('/webhook', (req, res) => {
     const flowBuffer = Buffer.from(encrypted_flow_data, 'base64');
     const authTag = flowBuffer.slice(-16);
     const encryptedData = flowBuffer.slice(0, -16);
-
     const ivBuffer = Buffer.from(initial_vector, 'base64');
 
     const decipher = crypto.createDecipheriv('aes-128-gcm', decryptedAesKey, ivBuffer);
@@ -74,19 +73,25 @@ app.post('/webhook', (req, res) => {
     console.log('✅ Datos recibidos del formulario:', flowData);
 
     // ======================
-    // PASO 3: Preparar respuesta (pantalla SUCCESS)
+    // PASO 3: Preparar respuesta CORRECTA para pantalla SUCCESS
     // ======================
+    const flowToken = flowData.flow_token || flowData.flowToken || "";
+
     const responsePayload = {
-  screen: "SUCCESS",
-  data: {
-    mensaje_final: "Su reclamo ha sido registrado correctamente en el sistema."
-  }
-};
+      screen: "SUCCESS",
+      data: {
+        extension_message_response: {
+          params: {
+            flow_token: flowToken,
+            mensaje_final: "Su reclamo ha sido registrado correctamente en el sistema."
+          }
+        }
+      }
+    };
 
     // ======================
-    // PASO 4: Encriptar la respuesta correctamente
+    // PASO 4: Encriptar la respuesta correctamente (con IV Flip)
     // ======================
-    // ¡¡FLIP DEL IV!! ← Este es el paso que faltaba
     const flippedIv = Buffer.from(ivBuffer).map(byte => byte ^ 0xFF);
 
     const cipher = crypto.createCipheriv('aes-128-gcm', decryptedAesKey, flippedIv);
@@ -97,7 +102,7 @@ app.post('/webhook', (req, res) => {
       cipher.getAuthTag()
     ]);
 
-    // Enviar como base64 (texto plano, NO JSON)
+    // Enviar como base64 (esto es lo que Meta espera)
     res.status(200).send(encryptedResponse.toString('base64'));
 
   } catch (error) {
