@@ -69,29 +69,36 @@ app.post('/webhook', (req, res) => {
 
     const flowData = JSON.parse(decrypted.toString('utf8'));
 
-    console.log('✅ Flow Data recibido:', flowData);
+    // ==================== LOGS IMPORTANTES ====================
+    console.log('✅ Flow Data completo recibido:', JSON.stringify(flowData, null, 2));
 
-    // === CAMBIO IMPORTANTE: Extraer flow_token de forma más robusta ===
-    const flowToken = flowData.flow_token || flowData.flowToken || flowData.data?.flow_token || "";
+    // Extraer flow_token de todas las formas posibles
+    let flowToken = "";
+    if (flowData.flow_token) flowToken = flowData.flow_token;
+    else if (flowData.flowToken) flowToken = flowData.flowToken;
+    else if (flowData.data && flowData.data.flow_token) flowToken = flowData.data.flow_token;
+    else if (flowData.data && flowData.data.flowToken) flowToken = flowData.data.flowToken;
+
+    console.log(`🔑 Flow Token extraído: "${flowToken}"`);
 
     if (!flowToken) {
-      console.warn("⚠️ flow_token vacío o no encontrado");
+      console.warn("⚠️ No se pudo extraer el flow_token. La respuesta puede fallar.");
     }
 
-    // 3. Respuesta CORRECTA para pantalla SUCCESS (terminal)
+    // 3. Respuesta para SUCCESS
     const responsePayload = {
       screen: "SUCCESS",
       data: {
         extension_message_response: {
           params: {
-            flow_token: flowToken,                    // ← debe venir lleno
+            flow_token: flowToken,
             mensaje_final: "Su reclamo ha sido registrado correctamente en el sistema."
           }
         }
       }
     };
 
-    // 4. Encriptar respuesta (con IV flip)
+    // 4. Encriptar con IV flip
     const flippedIv = Buffer.from(ivBuffer).map(byte => byte ^ 0xFF);
 
     const cipher = crypto.createCipheriv('aes-128-gcm', decryptedAesKey, flippedIv);
