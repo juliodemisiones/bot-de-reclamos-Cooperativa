@@ -77,13 +77,11 @@ app.post('/webhook', (req, res) => {
     // PASO 3: Preparar respuesta (pantalla SUCCESS)
     // ======================
     const responsePayload = {
-      version: "7.3",           // importante mantener la versión de tu Flow
-      screen: "SUCCESS",
-      data: {
-        mensaje_final: "Su reclamo ha sido registrado correctamente en el sistema.",
-        numero_reclamo: "RE-" + Date.now().toString().slice(-6)
-      }
-    };
+  screen: "SUCCESS",
+  data: {
+    mensaje_final: "Su reclamo ha sido registrado correctamente en el sistema."
+  }
+};
 
     // ======================
     // PASO 4: Encriptar la respuesta correctamente
