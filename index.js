@@ -1,18 +1,19 @@
 const express = require('express');
-const crypto = require('crypto');
-const app = express();
+const bodyParser = require('body-parser');
+const app = express().use(bodyParser.json());
+
 const port = process.env.PORT || 3000;
+const VERIFY_TOKEN = "cooperativa90";
 
-app.use(express.json());
-
-// 1. VALIDACIÓN DEL WEBHOOK (Para Meta)
+// 1. RUTA PARA LA VALIDACIÓN (GET)
+// Esto es lo que Meta consulta cuando le das a "Verificar y guardar"
 app.get('/webhook', (req, res) => {
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
     const challenge = req.query['hub.challenge'];
 
     if (mode && token) {
-        if (mode === 'subscribe' && token === process.env.VERIFY_TOKEN) {
+        if (mode === 'subscribe' && token === VERIFY_TOKEN) {
             console.log('WEBHOOK_VERIFIED');
             res.status(200).send(challenge);
         } else {
@@ -21,23 +22,19 @@ app.get('/webhook', (req, res) => {
     }
 });
 
-// 2. RECEPCIÓN DE DATOS DEL FLOW (Endpoint)
-app.post('/webhook', async (req, res) => {
-    try {
-        const body = req.body;
-        console.log('Datos recibidos de Meta:', JSON.stringify(body, null, 2));
+// 2. RUTA PARA RECIBIR DATOS (POST)
+// Aquí llegarán los mensajes y eventos de los Flows
+app.post('/webhook', (req, res) => {
+    const body = req.body;
 
-        // Por ahora, respondemos con éxito para que Meta no de error
-        res.status(200).json({
-            version: "3.0",
-            data: { status: "active" }
-        });
-    } catch (error) {
-        console.error('Error procesando el POST:', error);
-        res.sendStatus(500);
+    console.log('Evento recibido:', JSON.stringify(body, null, 2));
+
+    if (body.object) {
+        // Aquí es donde procesaremos los reclamos más adelante
+        res.status(200).send('EVENT_RECEIVED');
+    } else {
+        res.sendStatus(404);
     }
 });
 
-app.listen(port, () => {
-    console.log(`Servidor corriendo en puerto ${port}`);
-});
+app.listen(port, () => console.log(`Servidor escuchando en puerto ${port}`));
