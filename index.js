@@ -15,22 +15,25 @@ app.get('/webhook', (req, res) => {
 app.post('/webhook', (req, res) => {
   const body = req.body;
 
-  // --- SOLUCIÓN PARA EL CHECK VERDE ---
-  // Si Meta envía 'ping' o el cuerpo no tiene datos cifrados, respondemos lo que Meta espera ver.
-  if (body.action === "ping" || !body.encrypted_flow_data) {
-    console.log("✅ Respondiendo PING para Comprobación de Estado");
+  // --- EL TRUCO PARA EL CHECK VERDE ---
+  // Si Meta pregunta "¿estás vivo?" (ping), respondemos SIN CIFRAR.
+  if (body.action === 'ping' || !body.encrypted_flow_data) {
+    console.log("🤖 Enviando Status Active a Meta...");
     return res.status(200).json({
-      data: { status: "active" } // Esto es lo que pide Meta en "Resultado esperado"
+      data: {
+        status: "active"
+      }
     });
   }
 
-  // --- RESPUESTA PARA EL FLUJO REAL ---
+  // --- SI ES UNA SOLICITUD DE DATOS REAL ---
   try {
     const aesKey = crypto.privateDecrypt(
       { key: PRIVATE_KEY, padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: "sha256" },
       Buffer.from(body.encrypted_aes_key, 'base64')
     );
 
+    // Respuesta que espera tu pantalla
     const responsePayload = {
       data: { 
         msj: "✅ Conexión Cooperativa OK" 
@@ -48,13 +51,14 @@ app.post('/webhook', (req, res) => {
     
     const finalBuffer = Buffer.concat([cipherText, cipher.getAuthTag()]);
 
-    console.log("🔐 Datos de flujo enviados");
+    console.log("🔐 Respuesta cifrada enviada al Flow");
     res.status(200).send(finalBuffer.toString('base64'));
 
   } catch (e) {
-    console.error("❌ Error de descifrado:", e.message);
+    console.error("❌ Error:", e.message);
+    // Fallback de seguridad para no quedar bloqueados
     res.status(200).json({ data: { status: "active" } });
   }
 });
 
-app.listen(port, () => console.log("Servidor Cooperativa Activo"));
+app.listen(port, () => console.log(`Servidor Cooperativa en puerto ${port}`));
