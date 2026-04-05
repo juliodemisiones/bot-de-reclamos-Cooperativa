@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "reclamos-coop",
+  "private_key_id": "62e775552a991ec3970464a3b24a92d9e937fd68",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDBoAzFeDjtQh7o\nNJpTbheUpl7oDMG7HzyuWtHCY5b0fDvVHBtc1ygeTQHuMLD3GIlAp7Kpl6+BAKUD\nZrqMmHklmVsnDV6mdEWCl745287xtVVZMeC6z+d7deiGMTCewwi7wy3wZDg1y8lN\n1iu8EoYBup5pew9vVP0O0DUBw41i58hseg9wFpxlBnAqAAbASxuRGEumxTIWG8uy\nLC7tvmpjVz0Z8SD+GewXB1rFt6Kq2GZa0vv+XkWU2xcWcFISyeybzU47vuMwSF+T\nS/PD8X5Gat2y3WZS5f2sxOfzkAVc5EO31RZ/In+EMWPwUiSTLN/yzCinv66XuvV0\nebSary0RAgMBAAECggEAU/Fr6AaFg5LpbFk12Nq/XWI9fhPdv568w4g7LS/Y55ie\npfcgA8GBspVHM3knl5CrHH03r1/EJkTdxVo5oS+PQhY41vbsZHS/F+1qepIJp2+q\nl1dQ6xysajGFg/v6bLH4bNKi7Xe9iNEXLmgeINTVBRXfjLJd0DID3fK1MFUTzF8Y\nQgEF6fwRF+Bl3MEMoqfIbzEOcpSrpPud63LJ1CaeXLYM6BoO0BQA3XwiwImSXxcp\nrUokY93iVLsDywO+/nV9L+QBGmSx5ngld6VE7n5hS4Nj7/ZAJx6Jbq2HykqqmxCA\nDz86WA5DiHCvJCxiA0Y34FOyBNFZss9g5Htifl8hiwKBgQDkL29our9/NG6moXDP\n0VP5mcXLWe0ApNPhDYKrJD3qnBdthb4bQh1e0+2G99M9u6sYhfpfPvlGA9pitO/a\nnv19Xb7DWcYy/UALkfDeKvK6cJCSK63v7sIETQ6u/m6xPM4wW+EKK0Kn6/qfQfpq\nL6RRzm75RyoC1Rtk6asJwINFAwKBgQDZOikMLiTE76uroKKgvMjEC3uEu17dh6aT\n6B56Jr5fGsq4AvYFKTRPukTKO+TPP2qQ4EuNgca/T0nxclmzU8WyurJRyn9VNYzp\noRN3fFcWrOQbhNvtuhPLxZABoMTSmSnLC9d9YSnQf02yxAQs8lCPfRhSdmrXWGJh\nLDrm02Y3WwKBgBc2iCPkU5TSNat34u0RQ3Sx4wBD3qthGTjc0f0tC6txQ6TdpTBK\nsogyEQjY70FpdQdioczMsDkiLTY7Z+cao3j8b2qaGGKZhslmiFVhkx3KU7q6/M/a\nvxwG5saAlawsHmGnByasrfQ9Olq3MI1a2WGFGZ78UVbGbSn/52lvjysXAoGBAJoV\npj4skQpck2IHbLQllSdymagaHH15FlC+CrhMuSbO41LJTud0RdXz442sFG5pplaj\nsxPqJSdYv7OTkEsitg5EXe6ke9PeS1kBV8Sen0vHUXqvsC0dm6MkPTTabCKSYFHV\n0YHvJPDvDBcs8WVMcJaHfnQn6TtdR1N0Q0euVkgXAoGBANMPb0gyAUsu+6hOqNFO\nHcW82GJgn9bAi3ruBf94CiYTvDccv3Vw0CUnlyyVfTwfFuzfvnBifTynaDiAwYTa\neboip85JOxNqsD9dzkmsQ6w8d8QGcz5vLOOOcjrn9OrljQXndHIzm5ucy6hkRk0i\nyP015+Ly1TQLyPCM4ib1G3UV\n-----END PRIVATE KEY-----\n",
+  "client_email": "bot-reclamos-coop@reclamos-coop.iam.gserviceaccount.com",
+  "client_id": "100732986213833411548",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/bot-reclamos-coop%40reclamos-coop.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
