@@ -8,7 +8,6 @@ app.use(bodyParser.json());
 const port = process.env.PORT || 10000;
 const PRIVATE_KEY = process.env.PRIVATE_KEY ? process.env.PRIVATE_KEY.replace(/\\n/g, '\n') : null;
 
-// Verificación del Webhook (GET)
 app.get('/webhook', (req, res) => {
   res.status(200).send(req.query['hub.challenge']);
 });
@@ -16,27 +15,22 @@ app.get('/webhook', (req, res) => {
 app.post('/webhook', (req, res) => {
   const body = req.body;
 
-  // --- 1. RESPUESTA AL PING / HEALTH CHECK ---
-  // Meta espera exactamente: {"data": {"status": "active"}}
+  // --- SOLUCIÓN PARA EL CHECK VERDE ---
+  // Si Meta envía 'ping' o el cuerpo no tiene datos cifrados, respondemos lo que Meta espera ver.
   if (body.action === "ping" || !body.encrypted_flow_data) {
-    console.log("✅ Respondiendo PING (Health Check)");
+    console.log("✅ Respondiendo PING para Comprobación de Estado");
     return res.status(200).json({
-      data: { status: "active" }
+      data: { status: "active" } // Esto es lo que pide Meta en "Resultado esperado"
     });
   }
 
-  // --- 2. RESPUESTA AL DATA EXCHANGE (CIFRADA) ---
+  // --- RESPUESTA PARA EL FLUJO REAL ---
   try {
     const aesKey = crypto.privateDecrypt(
-      { 
-        key: PRIVATE_KEY, 
-        padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, 
-        oaepHash: "sha256" 
-      },
+      { key: PRIVATE_KEY, padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: "sha256" },
       Buffer.from(body.encrypted_aes_key, 'base64')
     );
 
-    // Estructura mínima que Meta acepta como válida
     const responsePayload = {
       data: { 
         msj: "✅ Conexión Cooperativa OK" 
@@ -54,14 +48,13 @@ app.post('/webhook', (req, res) => {
     
     const finalBuffer = Buffer.concat([cipherText, cipher.getAuthTag()]);
 
-    console.log("🔐 Respuesta cifrada enviada con éxito");
+    console.log("🔐 Datos de flujo enviados");
     res.status(200).send(finalBuffer.toString('base64'));
 
   } catch (e) {
     console.error("❌ Error de descifrado:", e.message);
-    // En caso de error, devolvemos el ping para intentar salvar la conexión
     res.status(200).json({ data: { status: "active" } });
   }
 });
 
-app.listen(port, () => console.log(`Servidor Cooperativa listo en puerto ${port}`));
+app.listen(port, () => console.log("Servidor Cooperativa Activo"));
