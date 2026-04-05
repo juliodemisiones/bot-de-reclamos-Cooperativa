@@ -8,12 +8,12 @@ app.use(bodyParser.json({ limit: '10mb' }));
 const port = process.env.PORT || 3000;
 const VERIFY_TOKEN = "cooperativa90";
 
-// Clave privada de las variables de entorno
+// Clave privada (Render maneja \n como string)
 const PRIVATE_KEY = process.env.PRIVATE_KEY 
   ? process.env.PRIVATE_KEY.replace(/\\n/g, '\n') 
   : null;
 
-// 1. Verificación inicial del Webhook (GET)
+// 1. Verificación Webhook (GET)
 app.get('/webhook', (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
@@ -26,7 +26,7 @@ app.get('/webhook', (req, res) => {
 app.post('/webhook', (req, res) => {
   const body = req.body || {};
 
-  // Responder al ping de Meta
+  // Ping de salud
   if (body.action === "ping") {
     return res.status(200).json({ version: "3.0", data: { status: "active" } });
   }
@@ -57,12 +57,12 @@ app.post('/webhook', (req, res) => {
     decrypted += decipher.final('utf8');
     const flowData = JSON.parse(decrypted);
 
-    console.log('✅ Datos recibidos de la Cooperativa:', flowData);
+    console.log('✅ Reclamo recibido:', flowData);
 
-    // C. Estructura de respuesta CORRECTA para Flows 3.0
+    // C. RESPUESTA PARA EL FLUJO
+    // Solo enviamos 'data' para que rellene la pantalla SUCCESS definida en el routing_model
     const responsePayload = {
       version: "3.0",
-      screen: "SUCCESS",
       data: {
         mensaje_final: "Su reclamo ha sido registrado correctamente en el sistema de la Cooperativa."
       }
@@ -79,14 +79,14 @@ app.post('/webhook', (req, res) => {
 
     const tagOut = cipher.getAuthTag();
     
-    // El Buffer final es: Texto Cifrado + Tag de 16 bytes
+    // Formato: [Texto Cifrado][Tag de 16 bytes]
     const finalResponse = Buffer.concat([cipherText, tagOut]);
 
     res.status(200).send(finalResponse.toString('base64'));
 
   } catch (e) {
     console.error('❌ Error de seguridad:', e.message);
-    res.status(500).send("Error de encriptación");
+    res.status(500).send("Error");
   }
 });
 
