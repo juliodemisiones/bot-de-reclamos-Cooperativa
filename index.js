@@ -8,19 +8,18 @@ app.use(bodyParser.json());
 const port = process.env.PORT || 10000;
 const PRIVATE_KEY = process.env.PRIVATE_KEY ? process.env.PRIVATE_KEY.replace(/\\n/g, '\n') : null;
 
-// Validación inicial (GET)
 app.get('/webhook', (req, res) => {
   res.status(200).send(req.query['hub.challenge']);
 });
 
-// Recepción de datos (POST)
 app.post('/webhook', (req, res) => {
   const body = req.body;
 
-  // --- PRIORIDAD: COMPROBACIÓN DE ESTADO (CHECK VERDE) ---
-  // Si no hay datos cifrados, respondemos el status active en texto PLANO.
-  if (!body.encrypted_flow_data || body.action === 'ping') {
-    console.log("🤖 META CHECK: Enviando status active (Plano)");
+  // --- SOLUCIÓN PARA EL CHECK VERDE ---
+  // Si Meta envía 'ping' o si no vienen datos cifrados, respondemos texto PLANO.
+  // Esto hace que el "Resultado real" coincida con el "Resultado esperado".
+  if (body.action === 'ping' || !body.encrypted_flow_data) {
+    console.log("🤖 META SALUD: Enviando status active plano");
     return res.status(200).json({
       data: {
         status: "active"
@@ -28,21 +27,15 @@ app.post('/webhook', (req, res) => {
     });
   }
 
-  // --- INTERCAMBIO DE DATOS REAL (PARA EL USUARIO) ---
+  // --- INTERCAMBIO DE DATOS PARA EL USUARIO (CIFRADO) ---
   try {
     const aesKey = crypto.privateDecrypt(
-      { 
-        key: PRIVATE_KEY, 
-        padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, 
-        oaepHash: "sha256" 
-      },
+      { key: PRIVATE_KEY, padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: "sha256" },
       Buffer.from(body.encrypted_aes_key, 'base64')
     );
 
     const responsePayload = {
-      data: { 
-        msj: "✅ Conexión Cooperativa OK" 
-      }
+      data: { msj: "✅ Conexión Cooperativa OK" }
     };
 
     const iv = Buffer.from(body.initial_vector, 'base64');
@@ -56,7 +49,7 @@ app.post('/webhook', (req, res) => {
     
     const finalBuffer = Buffer.concat([cipherText, cipher.getAuthTag()]);
 
-    console.log("🔐 FLUJO: Respuesta cifrada enviada");
+    console.log("🔐 FLUJO USUARIO: Respuesta cifrada enviada");
     res.status(200).send(finalBuffer.toString('base64'));
 
   } catch (e) {
