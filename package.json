@@ -1,11 +1,12 @@
 {
-  "name": "bot-cooperativa",
+  "name": "bot-de-reclamos",
   "version": "1.0.0",
   "main": "index.js",
   "dependencies": {
-    "express": "^4.18.2"
-  },
-  "scripts": {
-    "start": "node index.js"
+    "axios": "^1.6.0",
+    "dotenv": "^16.0.0",
+    "express": "^4.18.0",
+    "google-auth-library": "^9.0.0",
+    "google-spreadsheet": "^4.1.1"
   }
 }
