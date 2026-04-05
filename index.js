@@ -7,11 +7,16 @@ require('dotenv').config();
 const app = express();
 app.use(express.json());
 
+// Render suele usar el puerto 10000 por defecto
 const PORT = process.env.PORT || 10000;
+
+// Configuración de la llave privada de Meta (RSA) para desencriptar
 const PRIVATE_KEY = process.env.PRIVATE_KEY ? process.env.PRIVATE_KEY.replace(/\\n/g, '\n') : null;
 
 // --- CONFIGURACIÓN DE GOOGLE SHEETS ---
-const creds = require('./tu-archivo-de-llave.json'); 
+// IMPORTANTE: El archivo en GitHub debe llamarse google-key.json
+const creds = require('./google-key.json'); 
+
 const serviceAccountAuth = new JWT({
   email: creds.client_email,
   key: creds.private_key,
@@ -30,7 +35,7 @@ async function registrarReclamo(datos, waId) {
     let nombrePestaña = '';
     const servicio = datos.servicio ? datos.servicio.toUpperCase() : '';
 
-    // Ruteo por Servicio y Pestaña
+    // Ruteo inteligente por Servicio y Pestaña
     if (servicio === 'ENERGÍA') {
       spreadsheetId = SHEET_IDS.ENERGIA;
       nombrePestaña = 'ENERGÍA';
@@ -57,9 +62,12 @@ async function registrarReclamo(datos, waId) {
 
     if (!sheet) throw new Error(`No existe la pestaña ${nombrePestaña}`);
 
+    // Lógica de ID Autoincremental
     const rows = await sheet.getRows();
     const ultimoId = rows.length > 0 ? parseInt(rows[rows.length - 1].get('ID')) : 0;
     const nuevoId = isNaN(ultimoId) ? 1 : ultimoId + 1;
+    
+    // Fecha y Hora local de Misiones
     const fechaHora = new Date().toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" });
 
     await sheet.addRow({
@@ -84,32 +92,47 @@ async function registrarReclamo(datos, waId) {
 
 // --- ENDPOINTS ---
 
-// 1. Verificación del Webhook (GET)
+// Health Check para Render
+app.get('/', (req, res) => res.status(200).send('Servidor Cooperativa Activo'));
+
+// 1. Verificación del Webhook para Meta (GET)
 app.get('/webhook', (req, res) => {
-  res.status(200).send(req.query['hub.challenge']);
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+
+  if (mode && token === process.env.VERIFY_TOKEN) {
+    res.status(200).send(challenge);
+  } else {
+    res.sendStatus(403);
+  }
 });
 
 // 2. Procesamiento de Reclamos (POST)
 app.post('/webhook', async (req, res) => {
   const body = req.body;
 
-  // A. SI ES UN PING DE CONFIGURACIÓN (Como lo que hicimos anoche)
+  // Respuesta rápida para pings de Meta (INIT/Health Checks)
   if (body.action === 'ping' || body.action === 'INIT') {
     return res.status(200).json({ data: { status: "active" } });
   }
 
-  // B. SI SON DATOS REALES DE WHATSAPP (nfm_reply)
   try {
     const entry = body.entry?.[0];
     const changes = entry?.changes?.[0];
     const message = changes?.value?.messages?.[0];
 
+    // Detectamos si el mensaje viene de un WhatsApp Flow
     if (message?.type === 'interactive' && message.interactive?.nfm_reply) {
       const nfm = message.interactive.nfm_reply;
       
-      // Desencriptamos los datos del socio usando la lógica de anoche
+      // DESENCRIPTACIÓN RSA/AES (Lógica de seguridad de Meta)
       const aesKey = crypto.privateDecrypt(
-        { key: PRIVATE_KEY, padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: "sha256" },
+        { 
+          key: PRIVATE_KEY, 
+          padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, 
+          oaepHash: "sha256" 
+        },
         Buffer.from(nfm.encrypted_aes_key, 'base64')
       );
 
@@ -127,17 +150,20 @@ app.post('/webhook', async (req, res) => {
       const flowData = JSON.parse(decrypted);
       const waId = message.from;
 
-      console.log(`📩 Datos descifrados de ${waId}:`, flowData);
+      console.log(`📩 Reclamo recibido de ${waId}:`, flowData);
 
-      // Guardamos en Google Sheets
+      // Guardar en la hoja correspondiente
       const idReclamo = await registrarReclamo(flowData, waId);
-      if (idReclamo) console.log(`✅ Reclamo #${idReclamo} guardado.`);
+      
+      if (idReclamo) {
+        console.log(`✅ Guardado con éxito en Sheets. ID: ${idReclamo}`);
+      }
     }
 
-    res.sendStatus(200); // Siempre respondemos 200 a Meta
+    res.sendStatus(200); 
   } catch (e) {
-    console.error("❌ Error procesando datos:", e.message);
-    res.sendStatus(200);
+    console.error("❌ Error procesando Webhook:", e.message);
+    res.sendStatus(200); // Respondemos 200 igual para evitar reintentos fallidos de Meta
   }
 });
 
