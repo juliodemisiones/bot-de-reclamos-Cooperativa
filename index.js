@@ -3,13 +3,12 @@ const bodyParser = require('body-parser');
 const crypto = require('crypto');
 
 const app = express();
-// Usamos el parser simple para evitar discrepancias de tamaño
 app.use(bodyParser.json());
 
 const port = process.env.PORT || 3000;
 const PRIVATE_KEY = process.env.PRIVATE_KEY ? process.env.PRIVATE_KEY.replace(/\\n/g, '\n') : null;
 
-// 1. Webhook GET (Verificación de URL)
+// 1. Webhook GET (Verificación)
 app.get('/webhook', (req, res) => {
   res.status(200).send(req.query['hub.challenge']);
 });
@@ -18,37 +17,30 @@ app.get('/webhook', (req, res) => {
 app.post('/webhook', (req, res) => {
   const body = req.body;
 
-  // --- RESPUESTA AL PING (Captura "Resultado esperado") ---
-  // Según tu captura, Meta solo espera el objeto 'data'
+  // --- CASO PING: Resultado Esperado ---
   if (body.action === "ping") {
-    console.log("🏓 Ping de Meta recibido");
+    console.log("🏓 Respondiendo al Ping de Meta");
     return res.status(200).json({
-      data: {
-        status: "active"
-      }
+      data: { status: "active" }
     });
   }
 
+  // --- CASO DATA_EXCHANGE: Resultado Real ---
   try {
-    // --- DESCIFRADO ---
     const aesKey = crypto.privateDecrypt(
-      { 
-        key: PRIVATE_KEY, 
-        padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, 
-        oaepHash: "sha256" 
-      },
+      { key: PRIVATE_KEY, padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: "sha256" },
       Buffer.from(body.encrypted_aes_key, 'base64')
     );
 
-    // --- CARGA DE DATOS (Captura "Resultado real") ---
-    // Eliminamos 'version' del JSON cifrado porque Meta dijo que "no era lo esperado"
+    // Respuesta cifrada para el Flow
     const responsePayload = {
+      version: "3.0",
+      screen: "SUCCESS",
       data: { 
         msj: "✅ ¡Conexión con la Cooperativa Exitosa!" 
       }
     };
 
-    // --- CIFRADO (Protocolo IV Flip) ---
     const iv = Buffer.from(body.initial_vector, 'base64');
     const flippedIv = Buffer.from(iv).map(byte => byte ^ 0xFF);
     const cipher = crypto.createCipheriv('aes-128-gcm', aesKey, flippedIv);
@@ -58,16 +50,15 @@ app.post('/webhook', (req, res) => {
       cipher.final()
     ]);
     
-    // Concatenamos: DATOS CIFRADOS + TAG DE AUTENTICACIÓN (16 bytes)
     const finalBuffer = Buffer.concat([cipherText, cipher.getAuthTag()]);
 
-    console.log("🚀 Enviando respuesta cifrada...");
+    console.log("🚀 Respuesta de datos enviada");
     res.status(200).send(finalBuffer.toString('base64'));
 
   } catch (e) {
-    console.error("❌ Error en el proceso:", e.message);
-    res.status(500).send("Error de servidor");
+    console.error("❌ Error de descifrado:", e.message);
+    res.status(500).send("Error");
   }
 });
 
-app.listen(port, () => console.log(`🚀 Servidor Cooperativa en puerto ${port}`));
+app.listen(port, () => console.log("Servidor Cooperativa Listo"));
