@@ -6,41 +6,52 @@ const app = express();
 app.use(bodyParser.json());
 
 const port = process.env.PORT || 3000;
-const PRIVATE_KEY = process.env.PRIVATE_KEY ? process.env.PRIVATE_KEY.replace(/\\n/g, '\n') : null;
 
-// 1. Webhook GET (Verificación)
+// Clave privada desde variables de entorno
+const PRIVATE_KEY = process.env.PRIVATE_KEY 
+  ? process.env.PRIVATE_KEY.replace(/\\n/g, '\n') 
+  : null;
+
+// 1. Webhook GET (Verificación de Meta)
 app.get('/webhook', (req, res) => {
   res.status(200).send(req.query['hub.challenge']);
 });
 
-// 2. Webhook POST (Procesamiento)
+// 2. Webhook POST (Procesamiento de Flujos)
 app.post('/webhook', (req, res) => {
   const body = req.body;
 
-  // --- CASO PING: Resultado Esperado ---
+  // --- RESPUESTA AL PING (Captura "Resultado esperado") ---
   if (body.action === "ping") {
-    console.log("🏓 Respondiendo al Ping de Meta");
+    console.log("🏓 Ping recibido: Respondiendo con status active");
     return res.status(200).json({
       data: { status: "active" }
     });
   }
 
-  // --- CASO DATA_EXCHANGE: Resultado Real ---
+  // --- RESPUESTA A DATOS (Captura "Resultado real") ---
   try {
+    // A. Descifrar clave AES
     const aesKey = crypto.privateDecrypt(
-      { key: PRIVATE_KEY, padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: "sha256" },
+      { 
+        key: PRIVATE_KEY, 
+        padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, 
+        oaepHash: "sha256" 
+      },
       Buffer.from(body.encrypted_aes_key, 'base64')
     );
 
-    // Respuesta cifrada para el Flow
+    // B. Preparar la respuesta cifrada
+    // Incluimos 'screen' para que Meta sepa a dónde ir tras recibir los datos
     const responsePayload = {
       version: "3.0",
-      screen: "SUCCESS",
+      screen: "SUCCESS", 
       data: { 
         msj: "✅ ¡Conexión con la Cooperativa Exitosa!" 
       }
     };
 
+    // C. Cifrado (Protocolo IV Flip)
     const iv = Buffer.from(body.initial_vector, 'base64');
     const flippedIv = Buffer.from(iv).map(byte => byte ^ 0xFF);
     const cipher = crypto.createCipheriv('aes-128-gcm', aesKey, flippedIv);
@@ -50,15 +61,16 @@ app.post('/webhook', (req, res) => {
       cipher.final()
     ]);
     
+    // El Buffer final: Datos + Tag de 16 bytes
     const finalBuffer = Buffer.concat([cipherText, cipher.getAuthTag()]);
 
-    console.log("🚀 Respuesta de datos enviada");
+    console.log("🚀 Enviando respuesta de datos cifrada a Meta");
     res.status(200).send(finalBuffer.toString('base64'));
 
   } catch (e) {
-    console.error("❌ Error de descifrado:", e.message);
-    res.status(500).send("Error");
+    console.error("❌ Error de seguridad/descifrado:", e.message);
+    res.status(500).send("Error de servidor");
   }
 });
 
-app.listen(port, () => console.log("Servidor Cooperativa Listo"));
+app.listen(port, () => console.log(`🚀 Servidor Cooperativa activo en puerto ${port}`));
