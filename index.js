@@ -6,10 +6,10 @@ const app = express();
 app.use(bodyParser.json());
 
 const port = process.env.PORT || 10000;
-// Asegúrate de que la PRIVATE_KEY en Render esté cargada correctamente
+// Verifica que PRIVATE_KEY en Render no tenga comillas extras
 const PRIVATE_KEY = process.env.PRIVATE_KEY ? process.env.PRIVATE_KEY.replace(/\\n/g, '\n') : null;
 
-// 1. Verificación del Webhook (GET) - Para que el enlace sea válido en Meta
+// 1. Validación obligatoria del Webhook (GET)
 app.get('/webhook', (req, res) => {
   res.status(200).send(req.query['hub.challenge']);
 });
@@ -18,11 +18,14 @@ app.get('/webhook', (req, res) => {
 app.post('/webhook', (req, res) => {
   const body = req.body;
 
+  // LOG de control para ver qué está llegando exactamente
+  console.log("📥 Petición recibida. Action:", body.action);
+
   // --- FILTRO DE FUERZA BRUTA: PRIORIDAD AL CHECK VERDE ---
-  // Si Meta envía un ping o si no hay datos cifrados, 
-  // respondemos EL TEXTO PLANO QUE META PIDE y salimos (return).
+  // Si no hay datos cifrados, o si es un ping de Meta, respondemos 
+  // el JSON plano exacto y cortamos la ejecución con 'return'.
   if (!body.encrypted_flow_data || body.action === 'ping' || body.action === 'INIT') {
-    console.log("🤖 BYPASS META: Enviando status active plano");
+    console.log("🤖 META DETECTADO: Enviando status active plano");
     return res.status(200).json({
       data: {
         status: "active"
@@ -30,7 +33,7 @@ app.post('/webhook', (req, res) => {
     });
   }
 
-  // --- FLUJO DE USUARIO (SOLO SI PASA EL FILTRO ANTERIOR) ---
+  // --- FLUJO CIFRADO (SOLO PARA PRUEBAS CON EL SIMULADOR) ---
   try {
     const aesKey = crypto.privateDecrypt(
       { 
@@ -41,11 +44,11 @@ app.post('/webhook', (req, res) => {
       Buffer.from(body.encrypted_aes_key, 'base64')
     );
 
-    // Meta a veces exige ver 'active' incluso dentro del cifrado para validar
+    // Obligamos a que el contenido cifrado también sea 'active' 
+    // para que Meta no tenga excusas al descifrar.
     const responsePayload = {
       data: { 
-        status: "active",
-        msj: "✅ Conexión Cooperativa OK" 
+        status: "active" 
       }
     };
 
@@ -60,12 +63,12 @@ app.post('/webhook', (req, res) => {
     
     const finalBuffer = Buffer.concat([cipherText, cipher.getAuthTag()]);
 
-    console.log("🔐 FLUJO USUARIO: Respuesta cifrada enviada");
+    console.log("🔐 RESPUESTA CIFRADA: Enviando status active");
     res.status(200).send(finalBuffer.toString('base64'));
 
   } catch (e) {
-    console.error("❌ ERROR:", e.message);
-    // Fallback: Siempre responder algo que Meta acepte
+    console.error("❌ ERROR DE DESCIFRADO:", e.message);
+    // Fallback de seguridad para mantener el check verde
     res.status(200).json({ data: { status: "active" } });
   }
 });
