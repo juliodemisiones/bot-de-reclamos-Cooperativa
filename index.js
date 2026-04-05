@@ -6,21 +6,21 @@ const app = express();
 app.use(bodyParser.json());
 
 const port = process.env.PORT || 10000;
-// Asegúrate de que la PRIVATE_KEY en Render no tenga comillas extras
+// Asegúrate de que la PRIVATE_KEY en Render esté configurada correctamente
 const PRIVATE_KEY = process.env.PRIVATE_KEY ? process.env.PRIVATE_KEY.replace(/\\n/g, '\n') : null;
 
-// 1. Verificación obligatoria del Webhook (GET)
+// 1. Verificación del Webhook (GET)
 app.get('/webhook', (req, res) => {
   res.status(200).send(req.query['hub.challenge']);
 });
 
-// 2. Procesamiento de mensajes (POST)
+// 2. Procesamiento de datos (POST)
 app.post('/webhook', (req, res) => {
   const body = req.body;
 
   // --- BLOQUE DE FUERZA BRUTA PARA EL CHECK VERDE ---
-  // Si Meta envía un 'ping' o si la petición viene sin datos cifrados,
-  // respondemos el JSON plano EXACTO que Meta espera y cortamos (return).
+  // Si Meta envía un 'ping' o si la petición viene sin datos cifrados (como en la comprobación de estado),
+  // respondemos el JSON plano EXACTO que Meta espera y cortamos la ejecución (return).
   if (!body.encrypted_flow_data || body.action === 'ping' || body.action === 'INIT') {
     console.log("🤖 META DETECTADO: Enviando Status Active Plano");
     return res.status(200).json({
@@ -30,7 +30,7 @@ app.post('/webhook', (req, res) => {
     });
   }
 
-  // --- LÓGICA DE DESCIFRADO (SOLO PARA FLUJOS REALES) ---
+  // --- LÓGICA DE DESCIFRADO (SOLO PARA FLUJOS REALES CON DATOS CIFRADOS) ---
   try {
     const aesKey = crypto.privateDecrypt(
       { 
@@ -64,7 +64,7 @@ app.post('/webhook', (req, res) => {
 
   } catch (e) {
     console.error("❌ ERROR DE DESCIFRADO:", e.message);
-    // Fallback: si falla el descifrado, enviamos status active para no perder el check verde
+    // Fallback: si falla algo, devolvemos el status active para intentar salvar el check verde
     res.status(200).json({ data: { status: "active" } });
   }
 });
