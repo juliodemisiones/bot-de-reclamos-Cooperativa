@@ -8,65 +8,34 @@ app.use(bodyParser.json({ limit: '10mb' }));
 const port = process.env.PORT || 3000;
 const VERIFY_TOKEN = "cooperativa90";
 
-// Clave privada
-let PRIVATE_KEY = process.env.PRIVATE_KEY
-  ? process.env.PRIVATE_KEY.replace(/\\n/g, '\n')
+// Clave privada de las variables de entorno
+const PRIVATE_KEY = process.env.PRIVATE_KEY 
+  ? process.env.PRIVATE_KEY.replace(/\\n/g, '\n') 
   : null;
 
-if (!PRIVATE_KEY) {
-  console.error("❌ PRIVATE_KEY no está configurada en Render");
-}
-
-// ======================
-// 1. Verificación GET
-// ======================
+// 1. Verificación inicial del Webhook (GET)
 app.get('/webhook', (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
-
-  if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-    console.log("✅ Webhook verificado correctamente");
-    return res.status(200).send(challenge);
-  }
+  if (mode === 'subscribe' && token === VERIFY_TOKEN) return res.status(200).send(challenge);
   res.sendStatus(403);
 });
 
-// ======================
-// 2. Procesamiento del Flow (POST)
-// ======================
+// 2. Procesamiento de datos (POST)
 app.post('/webhook', (req, res) => {
   const body = req.body || {};
 
-  console.log("📥 Body recibido:", JSON.stringify(body, null, 2));
-
-  // ==================== HEALTH CHECK (PING) ====================
-  if (body.action === "ping" || body.version === "3.0" && body.action === "ping") {
-    console.log("🏓 Health Check (ping) detectado - Respondiendo correctamente");
-
-    const pingResponse = {
-      version: "3.0",
-      data: {
-        status: "active"
-      }
-    };
-
-    // Respuesta SIMPLE (JSON plano) - NO encriptada
-    return res.status(200).json(pingResponse);
+  // Responder al ping de Meta
+  if (body.action === "ping") {
+    return res.status(200).json({ version: "3.0", data: { status: "active" } });
   }
 
-  // ==================== DATA_EXCHANGE NORMAL (encriptado) ====================
   const { encrypted_flow_data, encrypted_aes_key, initial_vector } = body;
-
-  if (!encrypted_flow_data || !encrypted_aes_key || !initial_vector) {
-    console.log("⚠️ Petición sin datos encriptados");
-    return res.status(200).send('EVENT_RECEIVED');
-  }
+  if (!encrypted_flow_data) return res.status(200).send('EVENT_RECEIVED');
 
   try {
-    console.log("🔐 Procesando data_exchange encriptado...");
-
-    // 1. Desencriptar AES Key
+    // A. Descifrar clave AES
     const decryptedAesKey = crypto.privateDecrypt(
       {
         key: PRIVATE_KEY,
@@ -76,57 +45,49 @@ app.post('/webhook', (req, res) => {
       Buffer.from(encrypted_aes_key, 'base64')
     );
 
-    // 2. Desencriptar datos
+    // B. Descifrar datos del Flow
     const flowBuffer = Buffer.from(encrypted_flow_data, 'base64');
-    const authTag = flowBuffer.slice(-16);
-    const encryptedData = flowBuffer.slice(0, -16);
-    const ivBuffer = Buffer.from(initial_vector, 'base64');
+    const tagIn = flowBuffer.slice(-16);
+    const dataIn = flowBuffer.slice(0, -16);
+    const iv = Buffer.from(initial_vector, 'base64');
 
-    const decipher = crypto.createDecipheriv('aes-128-gcm', decryptedAesKey, ivBuffer);
-    decipher.setAuthTag(authTag);
+    const decipher = crypto.createDecipheriv('aes-128-gcm', decryptedAesKey, iv);
+    decipher.setAuthTag(tagIn);
+    let decrypted = decipher.update(dataIn, 'binary', 'utf8');
+    decrypted += decipher.final('utf8');
+    const flowData = JSON.parse(decrypted);
 
-    let decrypted = decipher.update(encryptedData);
-    decrypted = Buffer.concat([decrypted, decipher.final()]);
+    console.log('✅ Datos recibidos de la Cooperativa:', flowData);
 
-    const flowData = JSON.parse(decrypted.toString('utf8'));
-
-    console.log('✅ Flow Data recibido:', JSON.stringify(flowData, null, 2));
-
-    const flowToken = flowData.flow_token || flowData.flowToken || "";
-
-    // 3. Respuesta para SUCCESS
+    // C. Estructura de respuesta CORRECTA para Flows 3.0
     const responsePayload = {
+      version: "3.0",
       screen: "SUCCESS",
       data: {
-        extension_message_response: {
-          params: {
-            flow_token: flowToken,
-            mensaje_final: "Su reclamo ha sido registrado correctamente en el sistema."
-          }
-        }
+        mensaje_final: "Su reclamo ha sido registrado correctamente en el sistema de la Cooperativa."
       }
     };
 
-    // 4. Encriptar con IV flip
-    const flippedIv = Buffer.from(ivBuffer).map(byte => byte ^ 0xFF);
-
+    // D. Encriptar respuesta (Protocolo IV Flip)
+    const flippedIv = Buffer.from(iv).map(byte => byte ^ 0xFF);
     const cipher = crypto.createCipheriv('aes-128-gcm', decryptedAesKey, flippedIv);
-
-    const encryptedResponse = Buffer.concat([
+    
+    const cipherText = Buffer.concat([
       cipher.update(JSON.stringify(responsePayload), 'utf8'),
-      cipher.final(),
-      cipher.getAuthTag()
+      cipher.final()
     ]);
 
-    res.status(200).send(encryptedResponse.toString('base64'));
+    const tagOut = cipher.getAuthTag();
+    
+    // El Buffer final es: Texto Cifrado + Tag de 16 bytes
+    const finalResponse = Buffer.concat([cipherText, tagOut]);
 
-  } catch (error) {
-    console.error('❌ Error al procesar el Flow:', error.message);
-    console.error(error.stack);
-    res.status(500).send("Error interno del servidor");
+    res.status(200).send(finalResponse.toString('base64'));
+
+  } catch (e) {
+    console.error('❌ Error de seguridad:', e.message);
+    res.status(500).send("Error de encriptación");
   }
 });
 
-app.listen(port, () => {
-  console.log(`🚀 Servidor WhatsApp Flows corriendo en puerto ${port}`);
-});
+app.listen(port, () => console.log(`🚀 Servidor Cooperativa activo en puerto ${port}`));
