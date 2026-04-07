@@ -196,7 +196,7 @@ async function registrarReclamo(datos, waId) {
     console.log(`✅ Reclamo ID ${nuevoId} guardado en pestaña "${nombrePestaña}"`);
     return nuevoId;
   } catch (error) {
-    console.error('❌ Error en Sheets:', error.message);
+    console.error('❌ Error en Sheets:', error.message, JSON.stringify(error?.response?.data ?? error?.errors ?? error?.toString()));
     return null;
   }
 }
@@ -224,7 +224,7 @@ async function guardarUbicacion(waId, latitud, longitud) {
         }
       }
     } catch (e) {
-      console.error(`❌ Error buscando en sheet ${nombre}:`, e.message);
+      console.error(`❌ Error buscando en sheet ${nombre}:`, e.message, JSON.stringify(e?.response?.data ?? e?.errors ?? e?.toString()));
     }
   }
   console.warn(`⚠️ No se encontró reclamo previo de ${waId}`);
