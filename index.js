@@ -112,7 +112,7 @@ async function enviarBienvenidaYPlantilla(waId) {
   await enviarMensajeWhatsApp(waId, {
     type: 'template',
     template: {
-      name: 'reclamos_v2m',
+      name: 'reclamos_v3',
       language: { code: 'es_AR' },
       components: [
         {
