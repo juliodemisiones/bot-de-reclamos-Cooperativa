@@ -1,4 +1,4 @@
-// === VERSIÓN CORREGIDA - Recomendada ===
+// === VERSIÓN LIMPIA - SIN SPREAD OPERATORS (Compatible con Node antiguo) ===
 const express = require('express');
 const crypto = require('crypto');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
@@ -8,9 +8,9 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// Middleware CRÍTICO para Meta Flow: debe ser simple y permitir body crudo
-app.use(express.json({ limit: '10mb' }));           // JSON normal
-app.use(express.text({ type: 'text/plain', limit: '10mb' })); // Por si viene como texto
+// Middlewares simples y seguros para Meta
+app.use(express.json({ limit: '10mb' }));
+app.use(express.text({ type: 'text/plain', limit: '10mb' }));
 
 const PRIVATE_KEY = process.env.PRIVATE_KEY 
   ? process.env.PRIVATE_KEY.replace(/\\n/g, '\n') 
@@ -20,7 +20,7 @@ const WHATSAPP_ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 const PHONE_NUMBER_ID = "1049500521582925";
 
-// === CONFIGURACIÓN GOOGLE SHEETS (sin cambios) ===
+// Configuración Google Sheets
 let serviceAccountAuth;
 try {
   const creds = require('./google-key.json');
@@ -40,17 +40,176 @@ const SHEET_IDS = {
 };
 
 // ======================
-// FUNCIONES (sin cambios importantes)
-async function enviarMensajeWhatsApp(to, messageData) { ... }   // mantengo igual
+// FUNCIÓN ENVIAR MENSAJE (sin spread)
+async function enviarMensajeWhatsApp(to, messageData) {
+  try {
+    const bodyPayload = {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: to
+    };
+    
+    // Copia manual de las propiedades de messageData
+    Object.keys(messageData).forEach(key => {
+      bodyPayload[key] = messageData[key];
+    });
 
-async function enviarBienvenidaYPlantilla(waId) { ... }         // mantengo igual
+    const response = await fetch(
+      `https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(bodyPayload)
+      }
+    );
 
-async function registrarReclamo(datos, waId) { ... }            // mantengo igual
-
-async function guardarUbicacion(waId, latitud, longitud) { ... } // mantengo igual
+    const result = await response.json();
+    if (!response.ok) {
+      console.error("❌ Error API WhatsApp:", JSON.stringify(result));
+      return false;
+    }
+    console.log(`✅ Mensaje enviado a ${to}`);
+    return true;
+  } catch (error) {
+    console.error("❌ Error fetch WhatsApp:", error.message);
+    return false;
+  }
+}
 
 // ======================
-// FUNCIONES DE CRIPTO (mejoradas ligeramente)
+// Otras funciones (sin cambios importantes)
+async function enviarBienvenidaYPlantilla(waId) {
+  // Mensaje de texto
+  await enviarMensajeWhatsApp(waId, {
+    type: "text",
+    text: {
+      body: "Se ha comunicado con la Cooperativa Luz y Fuerza.\n\n" +
+            "Para dar aviso de corte o falla en alguno de nuestros servicios, a continuación complete el registro de reclamo.\n\n" +
+            "📋 Tenga a mano su *número de suministro eléctrico* (es un dato necesario).\n\n" +
+            "Para consultas administrativas comuníquese al fijo *476000* de lunes a viernes de 6:30 a 13 hs."
+    }
+  });
+
+  // Plantilla con Flow
+  await enviarMensajeWhatsApp(waId, {
+    type: "template",
+    template: {
+      name: "reclamos_v2",
+      language: { code: "es_AR" },
+      components: [
+        {
+          type: "button",
+          sub_type: "flow",
+          index: "0",
+          parameters: [
+            {
+              type: "action",
+              action: {
+                flow_token: `${waId}_${Date.now()}`
+              }
+            }
+          ]
+        }
+      ]
+    }
+  });
+}
+
+async function registrarReclamo(datos, waId) {
+  try {
+    let spreadsheetId = '';
+    let nombrePestaña = '';
+    const normalizar = (str) =>
+      str ? str.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") : '';
+
+    const servicio = normalizar(datos.servicio);
+
+    if (servicio === 'ENERGIA') {
+      spreadsheetId = SHEET_IDS.ENERGIA;
+      nombrePestaña = 'ENERGÍA';
+    } else if (servicio === 'ALUMBRADO') {
+      spreadsheetId = SHEET_IDS.ENERGIA;
+      nombrePestaña = 'ALUMBRADO';
+    } else if (servicio === 'INTERNET') {
+      spreadsheetId = SHEET_IDS.TIC;
+      nombrePestaña = 'INTERNET';
+    } else if (servicio === 'TELEVISION') {
+      spreadsheetId = SHEET_IDS.TIC;
+      nombrePestaña = 'TELEVISIÓN';
+    } else if (servicio === 'TELEFONIA') {
+      spreadsheetId = SHEET_IDS.TIC;
+      nombrePestaña = 'TELEFONÍA';
+    } else {
+      console.warn("⚠️ Servicio no reconocido:", datos.servicio);
+      return null;
+    }
+
+    const doc = new GoogleSpreadsheet(spreadsheetId, serviceAccountAuth);
+    await doc.loadInfo();
+    const sheet = doc.sheetsByTitle[nombrePestaña];
+    if (!sheet) throw new Error(`No existe la pestaña "${nombrePestaña}"`);
+
+    const rows = await sheet.getRows();
+    const ultimoId = rows.length > 0 ? parseInt(rows[rows.length - 1].get('ID') || 0) : 0;
+    const nuevoId = isNaN(ultimoId) ? 1 : ultimoId + 1;
+
+    const fechaHora = new Date().toLocaleString("es-AR", {
+      timeZone: "America/Argentina/Buenos_Aires"
+    });
+
+    await sheet.addRow({
+      "ID": nuevoId,
+      "Estado": "pendiente",
+      "Fecha y Hora": fechaHora,
+      "Desde WhatsApp": waId,
+      "Suministro": datos.suministro || "",
+      "Nombre": datos.nombre || "",
+      "Dirección": datos.direccion || "",
+      "Teléfono": datos.telefono || "",
+      "Descripción": datos.mensaje || datos.descripcion || "",
+      "Marca GPS": ""
+    });
+
+    console.log(`✅ Reclamo ID ${nuevoId} guardado en "${nombrePestaña}"`);
+    return nuevoId;
+  } catch (error) {
+    console.error("❌ Error en Sheets:", error.message);
+    return null;
+  }
+}
+
+async function guardarUbicacion(waId, latitud, longitud) {
+  const googleMapsLink = `https://maps.google.com/?q=${latitud},${longitud}`;
+  const valorGPS = `${latitud}, ${longitud} — ${googleMapsLink}`;
+
+  for (const [nombre, spreadsheetId] of Object.entries(SHEET_IDS)) {
+    try {
+      const doc = new GoogleSpreadsheet(spreadsheetId, serviceAccountAuth);
+      await doc.loadInfo();
+      for (const sheet of Object.values(doc.sheetsByTitle)) {
+        const rows = await sheet.getRows();
+        for (let i = rows.length - 1; i >= 0; i--) {
+          if (rows[i].get('Desde WhatsApp') === waId) {
+            rows[i].set('Marca GPS', valorGPS);
+            await rows[i].save();
+            console.log(`✅ Ubicación guardada para ${waId}`);
+            return true;
+          }
+        }
+      }
+    } catch (e) {
+      console.error(`❌ Error en sheet ${nombre}:`, e.message);
+    }
+  }
+  console.warn(`⚠️ No se encontró reclamo para ${waId}`);
+  return false;
+}
+
+// ======================
+// FUNCIONES DE CRIPTOGRAFÍA
 function desencriptarFlow(encryptedAesKey, initialVector, encryptedData) {
   const aesKey = crypto.privateDecrypt({
     key: PRIVATE_KEY,
@@ -75,8 +234,8 @@ function desencriptarFlow(encryptedAesKey, initialVector, encryptedData) {
 
 function encriptarRespuestaFlow(aesKey, iv, responseData) {
   const algoritmo = aesKey.length === 16 ? 'aes-128-gcm' : 'aes-256-gcm';
-  const ivInvertido = Buffer.from(iv).reverse();   // ← Meta lo requiere así
-  
+  const ivInvertido = Buffer.from(iv).reverse();
+
   const cipher = crypto.createCipheriv(algoritmo, aesKey, ivInvertido);
   const responseStr = JSON.stringify(responseData);
   
@@ -90,29 +249,28 @@ function encriptarRespuestaFlow(aesKey, iv, responseData) {
 }
 
 // ======================
-// MANEJADOR DEL FLOW (PRIORIDAD MÁXIMA)
+// MANEJADOR DEL FLOW
 async function manejarFlow(body, res) {
-  const { encrypted_aes_key, initial_vector, encrypted_flow_data } = body || {};
-
-  if (!encrypted_aes_key || !initial_vector || !encrypted_flow_data) {
-    return false; // No es un payload de Flow
+  if (!body || !body.encrypted_aes_key || !body.initial_vector || !body.encrypted_flow_data) {
+    return false;
   }
 
-  console.log("🔄 Flow request detectado");
+  console.log("🔄 Procesando request de Flow");
 
   if (!PRIVATE_KEY) {
     console.error("❌ Falta PRIVATE_KEY");
-    return res.status(500).send('Error config');
+    res.status(500).send('Error de configuración');
+    return true;
   }
 
   try {
     const { flowData, aesKey, iv } = desencriptarFlow(
-      encrypted_aes_key, 
-      initial_vector, 
-      encrypted_flow_data
+      body.encrypted_aes_key,
+      body.initial_vector,
+      body.encrypted_flow_data
     );
 
-    console.log("Flow action:", flowData.action, "screen:", flowData.screen);
+    console.log("Flow action:", flowData.action || "desconocido");
 
     let responseData = { data: { status: "active" } };
 
@@ -129,11 +287,11 @@ async function manejarFlow(body, res) {
 
     res.set('Content-Type', 'text/plain');
     res.status(200).send(encryptedResponse);
-    console.log("✅ Flow respondido correctamente con Base64");
+    console.log("✅ Flow respondido con Base64 correctamente");
     return true;
 
   } catch (e) {
-    console.error("❌ Error en manejarFlow:", e.message);
+    console.error("❌ Error procesando Flow:", e.message);
     res.status(200).json({ data: { status: "active" } }); // fallback seguro
     return true;
   }
@@ -141,53 +299,48 @@ async function manejarFlow(body, res) {
 
 // ======================
 // ROUTES
-// ======================
+app.get('/', (req, res) => res.status(200).send('✅ Servidor Cooperativa Activo'));
 
-app.get('/', (req, res) => res.send('✅ Servidor Cooperativa Activo'));
-
-// Webhook Verification (GET)
 app.get('/webhook', (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
 
   if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-    console.log("✅ Webhook verificado por Meta");
+    console.log("✅ Webhook verificado");
     res.status(200).send(challenge);
   } else {
     res.sendStatus(403);
   }
 });
 
-// ENDPOINT PRINCIPAL - Aquí llega TODO de Meta
 app.post('/webhook', async (req, res) => {
   console.log("📬 POST /webhook recibido");
 
   const body = req.body;
 
-  // === PRIORIDAD 1: Es un request de Flow? ===
+  // Prioridad máxima: ¿Es un request de Flow?
   const esFlow = await manejarFlow(body, res);
-  if (esFlow) return;   // ← Muy importante: cortamos aquí si era Flow
+  if (esFlow) return;
 
-  // === Si no es Flow, procesamos mensaje normal de WhatsApp ===
+  // Procesamiento normal de mensajes WhatsApp
   if (body.object !== 'whatsapp_business_account') {
     return res.sendStatus(200);
   }
 
-  res.sendStatus(200); // Respondemos rápido a Meta
+  res.sendStatus(200);
 
   try {
-    const entry = body.entry?.[0];
-    const changes = entry?.changes?.[0];
-    const value = changes?.value;
-    const message = value?.messages?.[0];
+    const entry = body.entry && body.entry[0];
+    const changes = entry && entry.changes && entry.changes[0];
+    const value = changes && changes.value;
+    const message = value && value.messages && value.messages[0];
 
     if (!message) return;
 
     const waId = message.from;
 
-    if (message.type === 'interactive' && message.interactive?.nfm_reply) {
-      // Flow completado
+    if (message.type === 'interactive' && message.interactive && message.interactive.nfm_reply) {
       const nfm = message.interactive.nfm_reply;
       const { flowData } = desencriptarFlow(
         nfm.encrypted_aes_key,
@@ -199,13 +352,17 @@ app.post('/webhook', async (req, res) => {
       if (idReclamo) {
         await enviarMensajeWhatsApp(waId, {
           type: "text",
-          text: { body: `✅ Tu reclamo fue registrado con el ID: *${idReclamo}*.\n\nSi querés, compartí tu ubicación 📍` }
+          text: {
+            body: `✅ Tu reclamo fue registrado con el ID: *${idReclamo}*.\n\nSi querés, compartí tu ubicación 📍`
+          }
         });
       }
     } 
     else if (message.type === 'location') {
-      const { latitude, longitude } = message.location;
-      await guardarUbicacion(waId, latitude, longitude);
+      const location = message.location;
+      const lat = location.latitude;
+      const lon = location.longitude;
+      await guardarUbicacion(waId, lat, lon);
       await enviarMensajeWhatsApp(waId, {
         type: "text",
         text: { body: "📍 Gracias por compartir la ubicación." }
@@ -220,5 +377,5 @@ app.post('/webhook', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Servidor corriendo en puerto ${PORT}`);
+  console.log(`🚀 Servidor Cooperativa corriendo en puerto ${PORT}`);
 });
