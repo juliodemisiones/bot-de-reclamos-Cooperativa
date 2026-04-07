@@ -12,6 +12,9 @@ const app = express();
 //     Meta envía el body cifrado como texto plano;
 //     si express.json() lo toca primero, se rompe.
 // =============================================
+console.log("🔑 PRIVATE_KEY length:", PRIVATE_KEY?.length);
+console.log("🔑 PRIVATE_KEY inicio:", PRIVATE_KEY?.substring(0, 50));
+console.log("🔑 PRIVATE_KEY fin:", PRIVATE_KEY?.slice(-50));
 app.use('/flow', (req, res, next) => {
   let rawBody = '';
   req.setEncoding('utf8');
