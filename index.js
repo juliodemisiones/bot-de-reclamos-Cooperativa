@@ -344,7 +344,7 @@ async function manejarFlow(body, res) {
         responseData = {
           screen: 'SELECCION_SERVICIO',
           data: {
-            suministro: data.suministro
+            suministro: Number(data.suministro)
           }
         };
 
@@ -354,7 +354,7 @@ async function manejarFlow(body, res) {
         responseData = {
           screen: 'DATOS_ADICIONALES',
           data: {
-            suministro: data.suministro,
+            suministro: Number(data.suministro),
             servicio:   data.servicio
           }
         };
@@ -365,7 +365,7 @@ async function manejarFlow(body, res) {
         responseData = {
           screen: 'PANTALLA_CIERRE',
           data: {
-            suministro: data.suministro,
+            suministro: Number(data.suministro),
             servicio:   data.servicio,
             nombre:     data.nombre,
             direccion:  data.direccion,
