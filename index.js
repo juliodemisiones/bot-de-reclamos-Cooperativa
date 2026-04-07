@@ -6,7 +6,31 @@ require('dotenv').config();
 
 const app = express();
 
-// === Parser robusto — acepta JSON y texto plano ===
+// =============================================
+// 1️⃣  RAW BODY para /flow
+//     DEBE ir ANTES de cualquier otro parser.
+//     Meta envía el body cifrado como texto plano;
+//     si express.json() lo toca primero, se rompe.
+// =============================================
+app.use('/flow', (req, res, next) => {
+  let rawBody = '';
+  req.setEncoding('utf8');
+  req.on('data', chunk => { rawBody += chunk; });
+  req.on('end', () => {
+    req.rawBody = rawBody;
+    try {
+      req.body = JSON.parse(rawBody);
+    } catch (e) {
+      console.warn('⚠️ /flow: body no es JSON válido, rawBody (100):', rawBody.substring(0, 100));
+      req.body = {};
+    }
+    next();
+  });
+});
+
+// =============================================
+// 2️⃣  Parser genérico para el resto de rutas
+// =============================================
 app.use((req, res, next) => {
   express.json()(req, res, (err) => {
     if (err) {
@@ -15,7 +39,7 @@ app.use((req, res, next) => {
         try {
           if (typeof req.body === 'string') req.body = JSON.parse(req.body);
         } catch (e) {
-          console.warn("⚠️ Body no es JSON válido:", req.body?.substring?.(0, 100));
+          console.warn('⚠️ Body no es JSON válido:', req.body?.substring?.(0, 100));
           req.body = {};
         }
         next();
@@ -35,9 +59,9 @@ const PRIVATE_KEY = process.env.PRIVATE_KEY
   : null;
 const PHONE_NUMBER_ID = "1049500521582925";
 
-if (!WHATSAPP_ACCESS_TOKEN) console.error("❌ ERROR: Falta WHATSAPP_ACCESS_TOKEN en Render");
-if (!VERIFY_TOKEN)          console.error("❌ ERROR: Falta VERIFY_TOKEN en Render");
-if (!PRIVATE_KEY)           console.error("❌ ERROR: Falta PRIVATE_KEY en Render");
+if (!WHATSAPP_ACCESS_TOKEN) console.error('❌ ERROR: Falta WHATSAPP_ACCESS_TOKEN en Render');
+if (!VERIFY_TOKEN)          console.error('❌ ERROR: Falta VERIFY_TOKEN en Render');
+if (!PRIVATE_KEY)           console.error('❌ ERROR: Falta PRIVATE_KEY en Render');
 
 // --- CONFIGURACIÓN DE GOOGLE SHEETS ---
 let serviceAccountAuth;
@@ -48,14 +72,14 @@ try {
     key: creds.private_key,
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   });
-  console.log("✅ google-key.json cargado correctamente");
+  console.log('✅ google-key.json cargado correctamente');
 } catch (e) {
-  console.error("❌ ERROR: No se pudo cargar google-key.json:", e.message);
+  console.error('❌ ERROR: No se pudo cargar google-key.json:', e.message);
 }
 
 const SHEET_IDS = {
   ENERGIA: '1jA0FYHcrNS0zaX2dnyIkDf10DQeG6VHa_GA5MYdw0JE',
-  TIC: '1j7RXTVGlvs9genTq3SAfoWVGTAO-7mX-B2HAvdUzYVQ'
+  TIC:     '1j7RXTVGlvs9genTq3SAfoWVGTAO-7mX-B2HAvdUzYVQ'
 };
 
 // =============================================
@@ -72,22 +96,22 @@ async function enviarMensajeWhatsApp(to, messageData) {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          messaging_product: "whatsapp",
-          recipient_type: "individual",
-          to: to,
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to,
           ...messageData
         })
       }
     );
     const result = await response.json();
     if (!response.ok) {
-      console.error("❌ Error API WhatsApp:", JSON.stringify(result));
+      console.error('❌ Error API WhatsApp:', JSON.stringify(result));
       return false;
     }
     console.log(`✅ Mensaje enviado a ${to}`);
     return true;
   } catch (error) {
-    console.error("❌ Error fetch WhatsApp:", error.message);
+    console.error('❌ Error fetch WhatsApp:', error.message);
     return false;
   }
 }
@@ -97,29 +121,29 @@ async function enviarMensajeWhatsApp(to, messageData) {
 // =============================================
 async function enviarBienvenidaYPlantilla(waId) {
   await enviarMensajeWhatsApp(waId, {
-    type: "text",
+    type: 'text',
     text: {
       body:
-        "Se ha comunicado con la Cooperativa Luz y Fuerza.\n\n" +
-        "Para dar aviso de corte o falla en alguno de nuestros servicios, a continuación complete el registro de reclamo.\n\n" +
-        "📋 Tenga a mano su *número de suministro eléctrico* (es un dato necesario).\n\n" +
-        "Para consultas administrativas comuníquese al fijo *476000* de lunes a viernes de 6:30 a 13 hs."
+        'Se ha comunicado con la Cooperativa Luz y Fuerza.\n\n' +
+        'Para dar aviso de corte o falla en alguno de nuestros servicios, a continuación complete el registro de reclamo.\n\n' +
+        '📋 Tenga a mano su *número de suministro eléctrico* (es un dato necesario).\n\n' +
+        'Para consultas administrativas comuníquese al fijo *476000* de lunes a viernes de 6:30 a 13 hs.'
     }
   });
 
   await enviarMensajeWhatsApp(waId, {
-    type: "template",
+    type: 'template',
     template: {
-      name: "reclamos_v2",
-      language: { code: "es_AR" },
+      name: 'reclamos_v2',
+      language: { code: 'es_AR' },
       components: [
         {
-          type: "button",
-          sub_type: "flow",
-          index: "0",
+          type: 'button',
+          sub_type: 'flow',
+          index: '0',
           parameters: [
             {
-              type: "action",
+              type: 'action',
               action: {
                 flow_token: `${waId}_${Date.now()}`
               }
@@ -140,7 +164,7 @@ async function registrarReclamo(datos, waId) {
     let nombrePestaña = '';
 
     const normalizar = (str) =>
-      str ? str.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") : '';
+      str ? str.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') : '';
 
     const servicio = normalizar(datos.servicio);
 
@@ -160,7 +184,7 @@ async function registrarReclamo(datos, waId) {
       spreadsheetId = SHEET_IDS.TIC;
       nombrePestaña = 'TELEFONÍA';
     } else {
-      console.warn("⚠️ Servicio no reconocido:", datos.servicio, "→ normalizado:", servicio);
+      console.warn('⚠️ Servicio no reconocido:', datos.servicio, '→ normalizado:', servicio);
       return null;
     }
 
@@ -174,27 +198,27 @@ async function registrarReclamo(datos, waId) {
     const ultimoId = rows.length > 0 ? parseInt(rows[rows.length - 1].get('ID') || 0) : 0;
     const nuevoId = isNaN(ultimoId) ? 1 : ultimoId + 1;
 
-    const fechaHora = new Date().toLocaleString("es-AR", {
-      timeZone: "America/Argentina/Buenos_Aires"
+    const fechaHora = new Date().toLocaleString('es-AR', {
+      timeZone: 'America/Argentina/Buenos_Aires'
     });
 
     await sheet.addRow({
-      "ID": nuevoId,
-      "Estado": "pendiente",
-      "Fecha y Hora": fechaHora,
-      "Desde WhatsApp": waId,
-      "Suministro": datos.suministro || "",
-      "Nombre": datos.nombre || "",
-      "Dirección": datos.direccion || "",
-      "Teléfono": datos.telefono || "",
-      "Descripción": datos.mensaje || datos.descripcion || "",
-      "Marca GPS": ""
+      'ID': nuevoId,
+      'Estado': 'pendiente',
+      'Fecha y Hora': fechaHora,
+      'Desde WhatsApp': waId,
+      'Suministro': datos.suministro || '',
+      'Nombre': datos.nombre || '',
+      'Dirección': datos.direccion || '',
+      'Teléfono': datos.telefono || '',
+      'Descripción': datos.mensaje || datos.descripcion || '',
+      'Marca GPS': ''
     });
 
     console.log(`✅ Reclamo ID ${nuevoId} guardado en pestaña "${nombrePestaña}"`);
     return nuevoId;
   } catch (error) {
-    console.error("❌ Error en Sheets:", error.message);
+    console.error('❌ Error en Sheets:', error.message);
     return null;
   }
 }
@@ -237,7 +261,7 @@ function desencriptarFlow(encryptedAesKey, initialVector, encryptedData) {
     {
       key: PRIVATE_KEY,
       padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
-      oaepHash: "sha256"
+      oaepHash: 'sha256'
     },
     Buffer.from(encryptedAesKey, 'base64')
   );
@@ -249,7 +273,7 @@ function desencriptarFlow(encryptedAesKey, initialVector, encryptedData) {
   const decipher = crypto.createDecipheriv(algoritmo, aesKey, iv);
 
   const encryptedBuffer = Buffer.from(encryptedData, 'base64');
-  const tag = encryptedBuffer.slice(-16);
+  const tag  = encryptedBuffer.slice(-16);
   const data = encryptedBuffer.slice(0, -16);
 
   decipher.setAuthTag(tag);
@@ -286,16 +310,21 @@ function encriptarRespuestaFlow(aesKey, iv, responseData) {
 // MANEJADOR CENTRAL DEL FLOW
 // =============================================
 async function manejarFlow(body, res) {
+  // Log completo para diagnóstico
+  console.log('🔍 manejarFlow — keys recibidas:', Object.keys(body));
+  console.log('🔍 manejarFlow — body (300 chars):', JSON.stringify(body).substring(0, 300));
+
   const { encrypted_aes_key, initial_vector, encrypted_flow_data } = body;
 
   if (!encrypted_aes_key || !initial_vector || !encrypted_flow_data) {
+    console.warn('⚠️ Faltan campos de Flow. Keys presentes:', Object.keys(body));
     return false; // No es un request de Flow
   }
 
-  console.log("🔄 Request de Flow detectado — procesando...");
+  console.log('🔄 Request de Flow detectado — procesando...');
 
   if (!PRIVATE_KEY) {
-    console.error("❌ Falta PRIVATE_KEY");
+    console.error('❌ Falta PRIVATE_KEY');
     res.status(500).send('Error de configuración');
     return true;
   }
@@ -306,35 +335,37 @@ async function manejarFlow(body, res) {
       initial_vector,
       encrypted_flow_data
     );
-    console.log("🔄 Flow action:", flowData.action, "| screen:", flowData.screen);
+    console.log('🔄 Flow action:', flowData.action, '| screen:', flowData.screen);
 
     let responseData;
 
     if (flowData.action === 'ping') {
-      console.log("🏓 Ping de Meta — respondiendo active");
-      responseData = { data: { status: "active" } };
+      console.log('🏓 Ping de Meta — respondiendo active');
+      responseData = { data: { status: 'active' } };
+
     } else if (flowData.action === 'INIT') {
-      responseData = { screen: "INGRESO_SUMINISTRO", data: {} };
+      responseData = { screen: 'INGRESO_SUMINISTRO', data: {} };
+
     } else if (flowData.action === 'data_exchange') {
       responseData = {
         screen: flowData.screen,
         data: flowData.data || {}
       };
+
     } else {
-      responseData = { data: { status: "ok" } };
+      responseData = { data: { status: 'ok' } };
     }
 
-    // Encriptar con IV invertido y responder con Base64 puro
     const encryptedResponse = encriptarRespuestaFlow(aesKey, iv, responseData);
 
-    console.log("✅ Respondiendo al Flow con Base64 (primeros 40 chars):", encryptedResponse.substring(0, 40));
+    console.log('✅ Respondiendo al Flow con Base64 (primeros 40 chars):', encryptedResponse.substring(0, 40));
 
     res.set('Content-Type', 'text/plain');
     res.status(200).send(encryptedResponse);
     return true;
 
   } catch (e) {
-    console.error("❌ Error procesando Flow:", e.message, e.stack);
+    console.error('❌ Error procesando Flow:', e.message, e.stack);
     res.status(500).send('Error procesando Flow');
     return true;
   }
@@ -348,12 +379,12 @@ app.get('/', (req, res) => res.status(200).send('✅ Servidor Cooperativa Activo
 
 // Verificación del Webhook (GET)
 app.get('/webhook', (req, res) => {
-  const mode = req.query['hub.mode'];
-  const token = req.query['hub.verify_token'];
+  const mode      = req.query['hub.mode'];
+  const token     = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
 
   if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-    console.log("✅ WEBHOOK VERIFICADO por Meta");
+    console.log('✅ WEBHOOK VERIFICADO por Meta');
     res.status(200).send(challenge);
   } else {
     console.warn(`⚠️ Verificación fallida. Token recibido: "${token}"`);
@@ -365,27 +396,40 @@ app.get('/webhook', (req, res) => {
 // ENDPOINT DEL FLOW (/flow)
 // =============================================
 app.post('/flow', async (req, res) => {
-  console.log("🔄 POST recibido en /flow");
-  await manejarFlow(req.body, res);
+  console.log('🔄 POST recibido en /flow');
+  console.log('📦 rawBody (primeros 200):', req.rawBody?.substring(0, 200));
+
+  // Si el body llegó vacío pero hay rawBody, intentar usarlo
+  let body = req.body;
+  if (!body?.encrypted_aes_key && req.rawBody) {
+    try { body = JSON.parse(req.rawBody); } catch (e) { /* ya logueado arriba */ }
+  }
+
+  const handled = await manejarFlow(body, res);
+
+  if (!handled) {
+    console.warn('⚠️ /flow recibió request no reconocido como Flow — respondiendo 200 vacío');
+    res.status(200).send('ok');
+  }
 });
 
 // =============================================
 // ENDPOINT PRINCIPAL DEL WEBHOOK (POST)
 // =============================================
 app.post('/webhook', async (req, res) => {
-  console.log("📬 POST recibido en /webhook:", JSON.stringify(req.body).substring(0, 200));
+  console.log('📬 POST recibido en /webhook:', JSON.stringify(req.body).substring(0, 200));
 
   const body = req.body;
 
-  // Detectar si es un request de Flow llegando a /webhook
+  // Detectar si es un request de Flow llegando a /webhook (por si acaso)
   if (body.encrypted_flow_data) {
-    console.log("🔄 Request de Flow en /webhook — redirigiendo al manejador...");
+    console.log('🔄 Request de Flow en /webhook — redirigiendo al manejador...');
     await manejarFlow(body, res);
     return;
   }
 
   if (body.object !== 'whatsapp_business_account') {
-    console.log("ℹ️ Objeto no reconocido:", body.object);
+    console.log('ℹ️ Objeto no reconocido:', body.object);
     return res.sendStatus(200);
   }
 
@@ -393,13 +437,13 @@ app.post('/webhook', async (req, res) => {
   res.sendStatus(200);
 
   try {
-    const entry = body.entry?.[0];
+    const entry   = body.entry?.[0];
     const changes = entry?.changes?.[0];
-    const value = changes?.value;
+    const value   = changes?.value;
     const message = value?.messages?.[0];
 
     if (!message) {
-      console.log("ℹ️ Sin mensajes en el payload (status update)");
+      console.log('ℹ️ Sin mensajes en el payload (status update)');
       return;
     }
 
@@ -411,7 +455,7 @@ app.post('/webhook', async (req, res) => {
       const nfm = message.interactive.nfm_reply;
 
       if (!PRIVATE_KEY) {
-        console.error("❌ No se puede desencriptar: falta PRIVATE_KEY");
+        console.error('❌ No se puede desencriptar: falta PRIVATE_KEY');
         return;
       }
 
@@ -426,7 +470,7 @@ app.post('/webhook', async (req, res) => {
 
       if (idReclamo) {
         await enviarMensajeWhatsApp(waId, {
-          type: "text",
+          type: 'text',
           text: {
             body:
               `✅ Tu reclamo fue registrado con el ID: *${idReclamo}*.\n\n` +
@@ -434,7 +478,7 @@ app.post('/webhook', async (req, res) => {
           }
         });
       } else {
-        console.warn("⚠️ No se pudo guardar el reclamo");
+        console.warn('⚠️ No se pudo guardar el reclamo');
       }
 
     // === CASO 2: Ubicación compartida ===
@@ -445,11 +489,11 @@ app.post('/webhook', async (req, res) => {
       const guardado = await guardarUbicacion(waId, latitude, longitude);
 
       await enviarMensajeWhatsApp(waId, {
-        type: "text",
+        type: 'text',
         text: {
           body: guardado
-            ? "📍 Gracias por compartir la ubicación de la falla. Fue registrada en tu reclamo."
-            : "📍 Ubicación recibida, pero no encontramos un reclamo reciente asociado a tu número."
+            ? '📍 Gracias por compartir la ubicación de la falla. Fue registrada en tu reclamo.'
+            : '📍 Ubicación recibida, pero no encontramos un reclamo reciente asociado a tu número.'
         }
       });
 
@@ -460,7 +504,7 @@ app.post('/webhook', async (req, res) => {
     }
 
   } catch (e) {
-    console.error("❌ Error procesando POST:", e.message, e.stack);
+    console.error('❌ Error procesando POST:', e.message, e.stack);
   }
 });
 
