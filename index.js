@@ -15,24 +15,27 @@ const PRIVATE_KEY = process.env.PRIVATE_KEY
   ? process.env.PRIVATE_KEY.replace(/\\n/g, '\n') 
   : null;
 
-// Validación importante al iniciar
+// Validación al iniciar
 if (!WHATSAPP_ACCESS_TOKEN) {
   console.error("❌ ERROR: Falta la variable WHATSAPP_ACCESS_TOKEN en Render");
-  console.error("   Agrega tu token permanente en las variables de entorno.");
 }
-
 if (!VERIFY_TOKEN) {
-  console.warn("⚠️  Advertencia: No se encontró VERIFY_TOKEN");
+  console.error("❌ ERROR: Falta la variable VERIFY_TOKEN en Render");
 }
 
 // --- CONFIGURACIÓN DE GOOGLE SHEETS ---
-const creds = require('./google-key.json');
-
-const serviceAccountAuth = new JWT({
-  email: creds.client_email,
-  key: creds.private_key,
-  scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-});
+// Asegúrate de que google-key.json esté en la raíz del proyecto en Render
+let serviceAccountAuth;
+try {
+    const creds = require('./google-key.json');
+    serviceAccountAuth = new JWT({
+      email: creds.client_email,
+      key: creds.private_key,
+      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    });
+} catch (e) {
+    console.error("❌ ERROR: No se pudo cargar google-key.json. Verifica que el archivo exista.");
+}
 
 const SHEET_IDS = {
   ENERGIA: '1jA0FYHcrNS0zaX2dnyIkDf10DQeG6VHa_GA5MYdw0JE',
@@ -43,12 +46,7 @@ const SHEET_IDS = {
 // FUNCIÓN PARA ENVIAR MENSAJES POR WHATSAPP
 // =============================================
 async function enviarMensajeWhatsApp(to, messageData) {
-  if (!WHATSAPP_ACCESS_TOKEN) {
-    console.error("❌ No se puede enviar mensaje: falta WHATSAPP_ACCESS_TOKEN");
-    return false;
-  }
-
-  const PHONE_NUMBER_ID = "1049500521582925"; // ← Cambia si tu Phone Number ID es diferente
+  const PHONE_NUMBER_ID = "1049500521582925"; // Tu ID Real confirmado
 
   try {
     const response = await fetch(
@@ -69,28 +67,26 @@ async function enviarMensajeWhatsApp(to, messageData) {
     );
 
     const result = await response.json();
-
     if (!response.ok) {
-      console.error("❌ Error al enviar mensaje WhatsApp:", result);
+      console.error("❌ Error API WhatsApp:", result);
       return false;
     }
-
-    console.log(`✅ Mensaje enviado correctamente a ${to}`);
+    console.log(`✅ Mensaje enviado a ${to}`);
     return true;
   } catch (error) {
-    console.error("❌ Error en fetch al enviar mensaje:", error.message);
+    console.error("❌ Error fetch WhatsApp:", error.message);
     return false;
   }
 }
 
-// --- FUNCIÓN PARA REGISTRAR EN LA HOJA CORRECTA ---
+// --- FUNCIÓN PARA REGISTRAR EN GOOGLE SHEETS ---
 async function registrarReclamo(datos, waId) {
   try {
     let spreadsheetId = '';
     let nombrePestaña = '';
     const servicio = datos.servicio ? datos.servicio.toUpperCase() : '';
 
-    if (servicio === 'ENERGÍA') {
+    if (servicio === 'ENERGÍA' || servicio === 'ENERGIA') {
       spreadsheetId = SHEET_IDS.ENERGIA;
       nombrePestaña = 'ENERGÍA';
     } else if (servicio === 'ALUMBRADO') {
@@ -99,22 +95,20 @@ async function registrarReclamo(datos, waId) {
     } else if (servicio === 'INTERNET') {
       spreadsheetId = SHEET_IDS.TIC;
       nombrePestaña = 'INTERNET';
-    } else if (servicio === 'TELEVISIÓN') {
+    } else if (servicio === 'TELEVISIÓN' || servicio === 'TELEVISION') {
       spreadsheetId = SHEET_IDS.TIC;
       nombrePestaña = 'TELEVISIÓN';
-    } else if (servicio === 'TELEFONÍA') {
+    } else if (servicio === 'TELEFONÍA' || servicio === 'TELEFONIA') {
       spreadsheetId = SHEET_IDS.TIC;
       nombrePestaña = 'TELEFONÍA';
     } else {
-      console.log("⚠️ Servicio no reconocido:", servicio);
       return null;
     }
 
     const doc = new GoogleSpreadsheet(spreadsheetId, serviceAccountAuth);
     await doc.loadInfo();
     const sheet = doc.sheetsByTitle[nombrePestaña];
-    if (!sheet) throw new Error(`No existe la pestaña ${nombrePestaña}`);
-
+    
     const rows = await sheet.getRows();
     const ultimoId = rows.length > 0 ? parseInt(rows[rows.length - 1].get('ID') || 0) : 0;
     const nuevoId = isNaN(ultimoId) ? 1 : ultimoId + 1;
@@ -147,48 +141,43 @@ async function registrarReclamo(datos, waId) {
 // ENDPOINTS
 // ======================
 
-// Health Check
 app.get('/', (req, res) => {
-  res.status(200).send('✅ Servidor Cooperativa Activo - WhatsApp Bot');
+  res.status(200).send('✅ Servidor Cooperativa Activo');
 });
 
-// Verificación del Webhook (GET)
+// Verificación del Webhook (GET) - CORREGIDO
 app.get('/webhook', (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
 
-  if (mode && token === VERIFY_TOKEN) {
-    console.log("✅ Webhook verificado correctamente");
+  if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+    console.log("✅ WEBHOOK_VERIFIED");
     res.status(200).send(challenge);
   } else {
-    console.warn("⚠️ Intento de verificación fallido");
+    console.warn(`⚠️ Verificación fallida. Recibido: ${token}, Esperado: ${VERIFY_TOKEN}`);
     res.sendStatus(403);
   }
 });
 
-// Procesamiento de mensajes y Flows (POST)
+// Procesamiento de mensajes (POST)
 app.post('/webhook', async (req, res) => {
   const body = req.body;
 
-  // Respuesta rápida a pings de Meta
-  if (body.action === 'ping' || body.action === 'INIT') {
-    return res.status(200).json({ status: "active" });
-  }
+  // Manejo de validaciones de Meta
+  if (body.object === 'whatsapp_business_account') {
+    try {
+      const entry = body.entry?.[0];
+      const changes = entry?.changes?.[0];
+      const value = changes?.value;
+      const message = value?.messages?.[0];
 
-  try {
-    const entry = body.entry?.[0];
-    const changes = entry?.changes?.[0];
-    const message = changes?.value?.messages?.[0];
+      if (message?.type === 'interactive' && message.interactive?.nfm_reply) {
+        const nfm = message.interactive.nfm_reply;
+        const waId = message.from;
 
-    // Procesar respuesta de WhatsApp Flow
-    if (message?.type === 'interactive' && message.interactive?.nfm_reply) {
-      const nfm = message.interactive.nfm_reply;
-      const waId = message.from;
-
-      // Desencriptación del Flow (Meta Flows)
-      if (PRIVATE_KEY) {
-        try {
+        if (PRIVATE_KEY) {
+          // Lógica de desencriptación de WhatsApp Flows
           const aesKey = crypto.privateDecrypt(
             {
               key: PRIVATE_KEY,
@@ -210,38 +199,28 @@ app.post('/webhook', async (req, res) => {
           decrypted += decipher.final('utf8');
 
           const flowData = JSON.parse(decrypted);
-
-          console.log(`📩 Flow recibido de ${waId}:`, flowData);
+          console.log(`📩 Flow recibido:`, flowData);
 
           const idReclamo = await registrarReclamo(flowData, waId);
 
           if (idReclamo) {
-            console.log(`✅ Reclamo guardado con ID: ${idReclamo}`);
-
-            // Opcional: Enviar confirmación al usuario
             await enviarMensajeWhatsApp(waId, {
               type: "text",
-              text: { 
-                body: `✅ ¡Reclamo registrado correctamente!\n\nID: ${idReclamo}\nPronto nos pondremos en contacto.` 
-              }
+              text: { body: `✅ Reclamo registrado con ID: ${idReclamo}` }
             });
           }
-        } catch (decError) {
-          console.error("❌ Error al desencriptar Flow:", decError.message);
         }
       }
+      res.sendStatus(200);
+    } catch (e) {
+      console.error("❌ Error procesando POST:", e.message);
+      res.sendStatus(200);
     }
-
-    res.sendStatus(200);
-  } catch (e) {
-    console.error("❌ Error procesando webhook:", e.message);
-    res.sendStatus(200); // Siempre responder 200 a Meta
+  } else {
+    res.sendStatus(404);
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Servidor Cooperativa corriendo en puerto ${PORT}`);
-  if (WHATSAPP_ACCESS_TOKEN) {
-    console.log("✅ Token de WhatsApp cargado correctamente");
-  }
+  console.log(`🚀 Servidor en puerto ${PORT}`);
 });
