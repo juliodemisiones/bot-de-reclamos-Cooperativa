@@ -243,7 +243,7 @@ function desencriptarFlow(encryptedAesKey, initialVector, encryptedData) {
   );
 
   const algoritmo = aesKey.length === 16 ? 'aes-128-gcm' : 'aes-256-gcm';
-  console.log(`🔑 Algoritmo: ${algoritmo} (key: ${aesKey.length} bytes)`);
+  console.log(`🔑 Desencriptando con ${algoritmo} (key: ${aesKey.length} bytes)`);
 
   const iv = Buffer.from(initialVector, 'base64');
   const decipher = crypto.createDecipheriv(algoritmo, aesKey, iv);
@@ -256,26 +256,20 @@ function desencriptarFlow(encryptedAesKey, initialVector, encryptedData) {
   let decrypted = decipher.update(data, 'binary', 'utf8');
   decrypted += decipher.final('utf8');
 
-  return JSON.parse(decrypted);
+  return { flowData: JSON.parse(decrypted), aesKey, iv };
 }
 
 // =============================================
 // FUNCIÓN: Encriptar respuesta para el Flow
-// Responde con Base64 puro (requerido por Meta)
+// IMPORTANTE: Meta requiere IV invertido para la respuesta
 // =============================================
-function encriptarRespuestaFlow(encryptedAesKey, initialVector, responseData) {
-  const aesKey = crypto.privateDecrypt(
-    {
-      key: PRIVATE_KEY,
-      padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
-      oaepHash: "sha256"
-    },
-    Buffer.from(encryptedAesKey, 'base64')
-  );
-
+function encriptarRespuestaFlow(aesKey, iv, responseData) {
   const algoritmo = aesKey.length === 16 ? 'aes-128-gcm' : 'aes-256-gcm';
-  const iv = Buffer.from(initialVector, 'base64');
-  const cipher = crypto.createCipheriv(algoritmo, aesKey, iv);
+
+  // IV invertido — requerido por Meta para la respuesta
+  const ivInvertido = Buffer.from(iv).reverse();
+
+  const cipher = crypto.createCipheriv(algoritmo, aesKey, ivInvertido);
 
   const responseStr = JSON.stringify(responseData);
   const encrypted = Buffer.concat([
@@ -284,12 +278,12 @@ function encriptarRespuestaFlow(encryptedAesKey, initialVector, responseData) {
   ]);
   const tag = cipher.getAuthTag();
 
+  // Concatenar datos encriptados + GCM auth tag → Base64
   return Buffer.concat([encrypted, tag]).toString('base64');
 }
 
 // =============================================
 // MANEJADOR CENTRAL DEL FLOW
-// Usado tanto en /flow como en /webhook
 // =============================================
 async function manejarFlow(body, res) {
   const { encrypted_aes_key, initial_vector, encrypted_flow_data } = body;
@@ -307,7 +301,11 @@ async function manejarFlow(body, res) {
   }
 
   try {
-    const flowData = desencriptarFlow(encrypted_aes_key, initial_vector, encrypted_flow_data);
+    const { flowData, aesKey, iv } = desencriptarFlow(
+      encrypted_aes_key,
+      initial_vector,
+      encrypted_flow_data
+    );
     console.log("🔄 Flow action:", flowData.action, "| screen:", flowData.screen);
 
     let responseData;
@@ -326,11 +324,10 @@ async function manejarFlow(body, res) {
       responseData = { data: { status: "ok" } };
     }
 
-    const encryptedResponse = encriptarRespuestaFlow(
-      encrypted_aes_key,
-      initial_vector,
-      responseData
-    );
+    // Encriptar con IV invertido y responder con Base64 puro
+    const encryptedResponse = encriptarRespuestaFlow(aesKey, iv, responseData);
+
+    console.log("✅ Respondiendo al Flow con Base64 (primeros 40 chars):", encryptedResponse.substring(0, 40));
 
     res.set('Content-Type', 'text/plain');
     res.status(200).send(encryptedResponse);
@@ -380,10 +377,9 @@ app.post('/webhook', async (req, res) => {
 
   const body = req.body;
 
-  // === Detectar si es un request de Flow llegando a /webhook ===
-  // (ocurre cuando el Flow tiene configurado /webhook como endpoint)
+  // Detectar si es un request de Flow llegando a /webhook
   if (body.encrypted_flow_data) {
-    console.log("🔄 Request de Flow detectado en /webhook — manejando...");
+    console.log("🔄 Request de Flow en /webhook — redirigiendo al manejador...");
     await manejarFlow(body, res);
     return;
   }
@@ -419,7 +415,7 @@ app.post('/webhook', async (req, res) => {
         return;
       }
 
-      const flowData = desencriptarFlow(
+      const { flowData } = desencriptarFlow(
         nfm.encrypted_aes_key,
         nfm.initial_vector,
         nfm.response_json
