@@ -22,7 +22,6 @@ app.use((req, res, next) => {
     try {
       req.body = JSON.parse(rawBody);
     } catch (e) {
-      // No es JSON — puede ser texto plano u otro formato
       req.body = {};
     }
     next();
@@ -282,7 +281,6 @@ function encriptarRespuestaFlow(aesKey, iv, responseData) {
   ]);
   const tag = cipher.getAuthTag();
 
-  // Concatenar datos encriptados + GCM auth tag → Base64
   return Buffer.concat([encrypted, tag]).toString('base64');
 }
 
@@ -297,7 +295,7 @@ async function manejarFlow(body, res) {
 
   if (!encrypted_aes_key || !initial_vector || !encrypted_flow_data) {
     console.warn('⚠️ Faltan campos de Flow. Keys presentes:', Object.keys(body));
-    return false; // No es un request de Flow
+    return false;
   }
 
   console.log('🔄 Request de Flow detectado — procesando...');
@@ -315,28 +313,79 @@ async function manejarFlow(body, res) {
       encrypted_flow_data
     );
     console.log('🔄 Flow action:', flowData.action, '| screen:', flowData.screen);
+    console.log('🔄 Flow data:', JSON.stringify(flowData.data));
 
     let responseData;
 
+    // ── PING ──────────────────────────────────────────
     if (flowData.action === 'ping') {
       console.log('🏓 Ping de Meta — respondiendo active');
       responseData = { data: { status: 'active' } };
 
+    // ── INIT ──────────────────────────────────────────
+    // Meta abre el flow — enviamos la primera screen
     } else if (flowData.action === 'INIT') {
-      responseData = { screen: 'INGRESO_SUMINISTRO', data: {} };
-
-    } else if (flowData.action === 'data_exchange') {
+      console.log('🚀 INIT — enviando INGRESO_SUMINISTRO');
       responseData = {
-        screen: flowData.screen,
-        data: flowData.data || {}
+        screen: 'INGRESO_SUMINISTRO',
+        data: {}
       };
 
+    // ── DATA_EXCHANGE ─────────────────────────────────
+    // El usuario tocó "Continuar" / "Siguiente" en una screen
+    } else if (flowData.action === 'data_exchange') {
+
+      const screen = flowData.screen;
+      const data   = flowData.data || {};
+
+      // Viene de INGRESO_SUMINISTRO → va a SELECCION_SERVICIO
+      if (screen === 'INGRESO_SUMINISTRO') {
+        console.log('📲 data_exchange desde INGRESO_SUMINISTRO — suministro:', data.suministro);
+        responseData = {
+          screen: 'SELECCION_SERVICIO',
+          data: {
+            suministro: data.suministro
+          }
+        };
+
+      // Viene de SELECCION_SERVICIO → va a DATOS_ADICIONALES
+      } else if (screen === 'SELECCION_SERVICIO') {
+        console.log('📲 data_exchange desde SELECCION_SERVICIO — servicio:', data.servicio);
+        responseData = {
+          screen: 'DATOS_ADICIONALES',
+          data: {
+            suministro: data.suministro,
+            servicio:   data.servicio
+          }
+        };
+
+      // Viene de DATOS_ADICIONALES → va a PANTALLA_CIERRE
+      } else if (screen === 'DATOS_ADICIONALES') {
+        console.log('📲 data_exchange desde DATOS_ADICIONALES — nombre:', data.nombre);
+        responseData = {
+          screen: 'PANTALLA_CIERRE',
+          data: {
+            suministro: data.suministro,
+            servicio:   data.servicio,
+            nombre:     data.nombre,
+            direccion:  data.direccion,
+            telefono:   data.telefono  || '',
+            mensaje:    data.mensaje   || ''
+          }
+        };
+
+      } else {
+        console.warn('⚠️ data_exchange desde screen desconocida:', screen);
+        responseData = { data: { status: 'ok' } };
+      }
+
+    // ── FALLBACK ──────────────────────────────────────
     } else {
+      console.warn('⚠️ Action no reconocida:', flowData.action);
       responseData = { data: { status: 'ok' } };
     }
 
     const encryptedResponse = encriptarRespuestaFlow(aesKey, iv, responseData);
-
     console.log('✅ Respondiendo al Flow con Base64 (primeros 40 chars):', encryptedResponse.substring(0, 40));
 
     res.set('Content-Type', 'text/plain');
