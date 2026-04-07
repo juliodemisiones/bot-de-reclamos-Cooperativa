@@ -1,4 +1,4 @@
-// === VERSIÓN CORREGIDA - TODO por /webhook (recomendada) ===
+// === VERSIÓN COMPLETA Y LISTA PARA USAR ===
 const express = require('express');
 const crypto = require('crypto');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
@@ -11,15 +11,12 @@ const PORT = process.env.PORT || 10000;
 app.use(express.json({ limit: '10mb' }));
 app.use(express.text({ type: 'text/plain', limit: '10mb' }));
 
-const PRIVATE_KEY = process.env.PRIVATE_KEY 
-  ? process.env.PRIVATE_KEY.replace(/\\n/g, '\n') 
-  : null;
-
+const PRIVATE_KEY = process.env.PRIVATE_KEY ? process.env.PRIVATE_KEY.replace(/\\n/g, '\n') : null;
 const WHATSAPP_ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 const PHONE_NUMBER_ID = "1049500521582925";
 
-// Configuración Google Sheets (igual)
+// Configuración Google Sheets
 let serviceAccountAuth;
 try {
   const creds = require('./google-key.json');
@@ -28,9 +25,9 @@ try {
     key: creds.private_key,
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   });
-  console.log("✅ google-key.json cargado");
+  console.log("✅ google-key.json cargado correctamente");
 } catch (e) {
-  console.error("❌ google-key.json:", e.message);
+  console.error("❌ ERROR google-key.json:", e.message);
 }
 
 const SHEET_IDS = {
@@ -39,7 +36,7 @@ const SHEET_IDS = {
 };
 
 // ======================
-// FUNCIONES (mantengo igual)
+// FUNCIÓN ENVIAR MENSAJE
 async function enviarMensajeWhatsApp(to, messageData) {
   try {
     const bodyPayload = {
@@ -65,21 +62,28 @@ async function enviarMensajeWhatsApp(to, messageData) {
 
     const result = await response.json();
     if (!response.ok) {
-      console.error("❌ Error WhatsApp:", JSON.stringify(result));
+      console.error("❌ Error API WhatsApp:", JSON.stringify(result));
       return false;
     }
     console.log(`✅ Mensaje enviado a ${to}`);
     return true;
   } catch (error) {
-    console.error("❌ Fetch WhatsApp:", error.message);
+    console.error("❌ Error fetch WhatsApp:", error.message);
     return false;
   }
 }
 
+// ======================
+// BIENVENIDA + PLANTILLA
 async function enviarBienvenidaYPlantilla(waId) {
   await enviarMensajeWhatsApp(waId, {
     type: "text",
-    text: { body: "Se ha comunicado con la Cooperativa Luz y Fuerza.\n\nPara dar aviso de corte o falla...\n\n📋 Tenga a mano su *número de suministro eléctrico*...\n\nPara consultas: *476000*" }
+    text: {
+      body: "Se ha comunicado con la Cooperativa Luz y Fuerza.\n\n" +
+            "Para dar aviso de corte o falla complete el registro.\n\n" +
+            "📋 Tenga a mano su número de suministro eléctrico.\n\n" +
+            "Consultas administrativas: *476000*"
+    }
   });
 
   await enviarMensajeWhatsApp(waId, {
@@ -87,43 +91,152 @@ async function enviarBienvenidaYPlantilla(waId) {
     template: {
       name: "reclamos_v2",
       language: { code: "es_AR" },
-      components: [{
-        type: "button",
-        sub_type: "flow",
-        index: "0",
-        parameters: [{ type: "action", action: { flow_token: `${waId}_${Date.now()}` }}]
-      }]
+      components: [
+        {
+          type: "button",
+          sub_type: "flow",
+          index: "0",
+          parameters: [
+            { type: "action", action: { flow_token: `${waId}_${Date.now()}` } }
+          ]
+        }
+      ]
     }
   });
 }
 
-// registrarReclamo, guardarUbicacion, desencriptarFlow, encriptarRespuestaFlow 
-// (mantengo exactamente las mismas que te di antes - no las repito por brevedad, cópialas del mensaje anterior)
+// ======================
+// REGISTRAR RECLAMO EN SHEETS
+async function registrarReclamo(datos, waId) {
+  try {
+    let spreadsheetId = '';
+    let nombrePestaña = '';
+    const normalizar = (str) => str ? str.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") : '';
+    const servicio = normalizar(datos.servicio);
 
-async function registrarReclamo(datos, waId) { /* ... misma función ... */ }
-async function guardarUbicacion(waId, latitud, longitud) { /* ... misma ... */ }
+    if (servicio === 'ENERGIA') { spreadsheetId = SHEET_IDS.ENERGIA; nombrePestaña = 'ENERGÍA'; }
+    else if (servicio === 'ALUMBRADO') { spreadsheetId = SHEET_IDS.ENERGIA; nombrePestaña = 'ALUMBRADO'; }
+    else if (servicio === 'INTERNET') { spreadsheetId = SHEET_IDS.TIC; nombrePestaña = 'INTERNET'; }
+    else if (servicio === 'TELEVISION') { spreadsheetId = SHEET_IDS.TIC; nombrePestaña = 'TELEVISIÓN'; }
+    else if (servicio === 'TELEFONIA') { spreadsheetId = SHEET_IDS.TIC; nombrePestaña = 'TELEFONÍA'; }
+    else {
+      console.warn("⚠️ Servicio no reconocido:", datos.servicio);
+      return null;
+    }
 
-function desencriptarFlow(encryptedAesKey, initialVector, encryptedData) { /* misma ... */ }
-function encriptarRespuestaFlow(aesKey, iv, responseData) { /* misma ... */ }
+    const doc = new GoogleSpreadsheet(spreadsheetId, serviceAccountAuth);
+    await doc.loadInfo();
+    const sheet = doc.sheetsByTitle[nombrePestaña];
+    if (!sheet) throw new Error(`No existe pestaña ${nombrePestaña}`);
+
+    const rows = await sheet.getRows();
+    const ultimoId = rows.length > 0 ? parseInt(rows[rows.length - 1].get('ID') || 0) : 0;
+    const nuevoId = isNaN(ultimoId) ? 1 : ultimoId + 1;
+
+    const fechaHora = new Date().toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" });
+
+    await sheet.addRow({
+      "ID": nuevoId,
+      "Estado": "pendiente",
+      "Fecha y Hora": fechaHora,
+      "Desde WhatsApp": waId,
+      "Suministro": datos.suministro || "",
+      "Nombre": datos.nombre || "",
+      "Dirección": datos.direccion || "",
+      "Teléfono": datos.telefono || "",
+      "Descripción": datos.mensaje || datos.descripcion || "",
+      "Marca GPS": ""
+    });
+
+    console.log(`✅ Reclamo ID ${nuevoId} guardado`);
+    return nuevoId;
+  } catch (error) {
+    console.error("❌ Error Sheets:", error.message);
+    return null;
+  }
+}
 
 // ======================
-// MANEJADOR DEL FLOW
-async function manejarFlow(body, res) {
-  if (!body || !body.encrypted_aes_key || !body.initial_vector || !body.encrypted_flow_data) {
+// GUARDAR UBICACIÓN
+async function guardarUbicacion(waId, latitud, longitud) {
+  const googleMapsLink = `https://maps.google.com/?q=${latitud},${longitud}`;
+  const valorGPS = `${latitud}, ${longitud} — ${googleMapsLink}`;
+
+  for (const [nombre, spreadsheetId] of Object.entries(SHEET_IDS)) {
+    try {
+      const doc = new GoogleSpreadsheet(spreadsheetId, serviceAccountAuth);
+      await doc.loadInfo();
+      for (const sheet of Object.values(doc.sheetsByTitle)) {
+        const rows = await sheet.getRows();
+        for (let i = rows.length - 1; i >= 0; i--) {
+          if (rows[i].get('Desde WhatsApp') === waId) {
+            rows[i].set('Marca GPS', valorGPS);
+            await rows[i].save();
+            console.log(`✅ Ubicación guardada para ${waId}`);
+            return true;
+          }
+        }
+      }
+    } catch (e) {
+      console.error(`❌ Error sheet ${nombre}:`, e.message);
+    }
+  }
+  console.warn(`⚠️ No se encontró reclamo para ${waId}`);
+  return false;
+}
+
+// ======================
+// CRIPTOGRAFÍA
+function desencriptarFlow(encryptedAesKey, initialVector, encryptedData) {
+  const aesKey = crypto.privateDecrypt({
+    key: PRIVATE_KEY,
+    padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+    oaepHash: "sha256"
+  }, Buffer.from(encryptedAesKey, 'base64'));
+
+  const algoritmo = aesKey.length === 16 ? 'aes-128-gcm' : 'aes-256-gcm';
+  const iv = Buffer.from(initialVector, 'base64');
+  const decipher = crypto.createDecipheriv(algoritmo, aesKey, iv);
+  const encryptedBuffer = Buffer.from(encryptedData, 'base64');
+  const tag = encryptedBuffer.slice(-16);
+  const data = encryptedBuffer.slice(0, -16);
+  decipher.setAuthTag(tag);
+  let decrypted = decipher.update(data, 'binary', 'utf8');
+  decrypted += decipher.final('utf8');
+  return { flowData: JSON.parse(decrypted), aesKey, iv };
+}
+
+function encriptarRespuestaFlow(aesKey, iv, responseData) {
+  const algoritmo = aesKey.length === 16 ? 'aes-128-gcm' : 'aes-256-gcm';
+  const ivInvertido = Buffer.from(iv).reverse();
+  const cipher = crypto.createCipheriv(algoritmo, aesKey, ivInvertido);
+  const responseStr = JSON.stringify(responseData);
+  const encrypted = Buffer.concat([cipher.update(responseStr, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return Buffer.concat([encrypted, tag]).toString('base64');
+}
+
+// ======================
+// MANEJADOR DEL FLOW (con logs detallados)
+async function manejarFlow(body, res, ruta = 'desconocida') {
+  console.log(`🔍 [${ruta}] POST recibido - Keys:`, Object.keys(body || {}));
+
+  if (!body?.encrypted_aes_key || !body?.initial_vector || !body?.encrypted_flow_data) {
+    console.log(`⚠️ [${ruta}] No es payload de Flow`);
     return false;
   }
 
-  console.log("🔄 Flow detectado - action:", body.action || "desconocido");
+  console.log(`🔄 [${ruta}] Flow detectado - Procesando...`);
 
   if (!PRIVATE_KEY) {
+    console.error(`❌ [${ruta}] Falta PRIVATE_KEY`);
     res.status(500).send('Error config');
     return true;
   }
 
   try {
-    const { flowData, aesKey, iv } = desencriptarFlow(
-      body.encrypted_aes_key, body.initial_vector, body.encrypted_flow_data
-    );
+    const { flowData, aesKey, iv } = desencriptarFlow(body.encrypted_aes_key, body.initial_vector, body.encrypted_flow_data);
+    console.log(`🔄 [${ruta}] Action: ${flowData.action} | Screen: ${flowData.screen || 'ninguna'}`);
 
     let responseData = { data: { status: "active" } };
 
@@ -134,13 +247,13 @@ async function manejarFlow(body, res) {
     }
 
     const encryptedResponse = encriptarRespuestaFlow(aesKey, iv, responseData);
-
     res.set('Content-Type', 'text/plain');
     res.status(200).send(encryptedResponse);
-    console.log("✅ Flow respondido con Base64");
+
+    console.log(`✅ [${ruta}] Respondido correctamente con Base64`);
     return true;
   } catch (e) {
-    console.error("❌ Error Flow:", e.message);
+    console.error(`❌ [${ruta}] Error:`, e.message);
     res.status(200).json({ data: { status: "active" } });
     return true;
   }
@@ -152,7 +265,6 @@ app.get('/', (req, res) => res.send('✅ Servidor Activo'));
 
 app.get('/webhook', (req, res) => {
   if (req.query['hub.mode'] === 'subscribe' && req.query['hub.verify_token'] === VERIFY_TOKEN) {
-    console.log("✅ Webhook verificado");
     res.status(200).send(req.query['hub.challenge']);
   } else {
     res.sendStatus(403);
@@ -160,22 +272,16 @@ app.get('/webhook', (req, res) => {
 });
 
 app.post('/webhook', async (req, res) => {
-  const body = req.body;
+  const esFlow = await manejarFlow(req.body, res, '/webhook');
+  if (esFlow) return;
 
-  // Prioridad 1: ¿Es payload de Flow?
-  if (await manejarFlow(body, res)) return;
-
-  // Procesamiento normal de mensajes
-  if (body.object !== 'whatsapp_business_account') {
-    return res.sendStatus(200);
-  }
-
+  // Procesamiento normal de mensajes WhatsApp (mismo que tenías antes)
+  if (req.body.object !== 'whatsapp_business_account') return res.sendStatus(200);
   res.sendStatus(200);
 
   try {
-    const message = body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+    const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
     if (!message) return;
-
     const waId = message.from;
 
     if (message.type === 'interactive' && message.interactive?.nfm_reply) {
@@ -183,17 +289,23 @@ app.post('/webhook', async (req, res) => {
       const { flowData } = desencriptarFlow(nfm.encrypted_aes_key, nfm.initial_vector, nfm.response_json);
       const idReclamo = await registrarReclamo(flowData, waId);
       if (idReclamo) {
-        await enviarMensajeWhatsApp(waId, { type: "text", text: { body: `✅ Reclamo ID: *${idReclamo}*\n\nCompartí tu ubicación si querés 📍` }});
+        await enviarMensajeWhatsApp(waId, { type: "text", text: { body: `✅ Reclamo ID: *${idReclamo}*\n\nCompartí tu ubicación si querés 📍` } });
       }
     } else if (message.type === 'location') {
       await guardarUbicacion(waId, message.location.latitude, message.location.longitude);
-      await enviarMensajeWhatsApp(waId, { type: "text", text: { body: "📍 Ubicación guardada." }});
+      await enviarMensajeWhatsApp(waId, { type: "text", text: { body: "📍 Gracias por la ubicación." } });
     } else {
       await enviarBienvenidaYPlantilla(waId);
     }
   } catch (e) {
-    console.error("❌ Error mensaje:", e.message);
+    console.error("❌ Error procesando mensaje:", e.message);
   }
 });
 
-app.listen(PORT, () => console.log(`🚀 Servidor en puerto ${PORT}`));
+app.post('/flow', async (req, res) => {
+  await manejarFlow(req.body, res, '/flow');
+});
+
+app.listen(PORT, () => {
+  console.log(`🚀 Servidor corriendo en puerto ${PORT}`);
+});
