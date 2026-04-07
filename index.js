@@ -6,21 +6,16 @@ require('dotenv').config();
 
 const app = express();
 
-// === FIX 1: Parser robusto — acepta JSON y texto plano ===
-// Necesario porque Meta a veces envía payloads con formato no estándar
+// === Parser robusto — acepta JSON y texto plano ===
 app.use((req, res, next) => {
   express.json()(req, res, (err) => {
     if (err) {
-      // Si falla el JSON parser, intentamos leer como texto
       express.text({ type: '*/*' })(req, res, (err2) => {
         if (err2) return next(err2);
         try {
-          // Intentamos parsear el texto recibido
-          if (typeof req.body === 'string') {
-            req.body = JSON.parse(req.body);
-          }
+          if (typeof req.body === 'string') req.body = JSON.parse(req.body);
         } catch (e) {
-          console.warn("⚠️ Body recibido no es JSON válido:", req.body?.substring?.(0, 100));
+          console.warn("⚠️ Body no es JSON válido:", req.body?.substring?.(0, 100));
           req.body = {};
         }
         next();
@@ -35,22 +30,15 @@ app.use((req, res, next) => {
 const PORT = process.env.PORT || 10000;
 const WHATSAPP_ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
-
-// === FIX 2: Validación de PRIVATE_KEY al arrancar (falla rápido y claro) ===
 const PRIVATE_KEY = process.env.PRIVATE_KEY
   ? process.env.PRIVATE_KEY.replace(/\\n/g, '\n')
   : null;
+const PHONE_NUMBER_ID = "1049500521582925";
 
 // Validaciones al iniciar
-if (!WHATSAPP_ACCESS_TOKEN) {
-  console.error("❌ ERROR: Falta la variable WHATSAPP_ACCESS_TOKEN en Render");
-}
-if (!VERIFY_TOKEN) {
-  console.error("❌ ERROR: Falta la variable VERIFY_TOKEN en Render");
-}
-if (!PRIVATE_KEY) {
-  console.error("❌ ERROR: Falta la variable PRIVATE_KEY en Render — la desencriptación de Flows no funcionará");
-}
+if (!WHATSAPP_ACCESS_TOKEN) console.error("❌ ERROR: Falta WHATSAPP_ACCESS_TOKEN en Render");
+if (!VERIFY_TOKEN)          console.error("❌ ERROR: Falta VERIFY_TOKEN en Render");
+if (!PRIVATE_KEY)           console.error("❌ ERROR: Falta PRIVATE_KEY en Render — desencriptación de Flows no funcionará");
 
 // --- CONFIGURACIÓN DE GOOGLE SHEETS ---
 let serviceAccountAuth;
@@ -72,11 +60,9 @@ const SHEET_IDS = {
 };
 
 // =============================================
-// FUNCIÓN PARA ENVIAR MENSAJES POR WHATSAPP
+// FUNCIÓN GENÉRICA PARA ENVIAR MENSAJES
 // =============================================
 async function enviarMensajeWhatsApp(to, messageData) {
-  const PHONE_NUMBER_ID = "1049500521582925";
-
   try {
     const response = await fetch(
       `https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`,
@@ -94,7 +80,6 @@ async function enviarMensajeWhatsApp(to, messageData) {
         })
       }
     );
-
     const result = await response.json();
     if (!response.ok) {
       console.error("❌ Error API WhatsApp:", JSON.stringify(result));
@@ -108,13 +93,42 @@ async function enviarMensajeWhatsApp(to, messageData) {
   }
 }
 
-// --- FUNCIÓN PARA REGISTRAR EN GOOGLE SHEETS ---
+// =============================================
+// FUNCIÓN: Texto de bienvenida + plantilla
+// =============================================
+async function enviarBienvenidaYPlantilla(waId) {
+  // 1. Mensaje de texto con la información
+  await enviarMensajeWhatsApp(waId, {
+    type: "text",
+    text: {
+      body:
+        "Se ha comunicado con la Cooperativa Luz y Fuerza.\n\n" +
+        "Para dar aviso de corte o falla en alguno de nuestros servicios, a continuación complete el registro de reclamo.\n\n" +
+        "📋 Tenga a mano su *número de suministro eléctrico* (es un dato necesario).\n\n" +
+        "Para consultas administrativas comuníquese al fijo *476000* de lunes a viernes de 6:30 a 13 hs."
+    }
+  });
+
+  // 2. Plantilla con botón que inicia el Flow
+  await enviarMensajeWhatsApp(waId, {
+    type: "template",
+    template: {
+      name: "reclamos_v2",
+      language: {
+        code: "es_AR"
+      }
+    }
+  });
+}
+
+// =============================================
+// FUNCIÓN: Registrar reclamo en Google Sheets
+// =============================================
 async function registrarReclamo(datos, waId) {
   try {
     let spreadsheetId = '';
     let nombrePestaña = '';
 
-    // === FIX 3: Normalización de tildes para comparación segura ===
     const normalizar = (str) =>
       str ? str.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") : '';
 
@@ -144,7 +158,7 @@ async function registrarReclamo(datos, waId) {
     await doc.loadInfo();
     const sheet = doc.sheetsByTitle[nombrePestaña];
 
-    if (!sheet) throw new Error(`No existe la pestaña "${nombrePestaña}" en el spreadsheet`);
+    if (!sheet) throw new Error(`No existe la pestaña "${nombrePestaña}"`);
 
     const rows = await sheet.getRows();
     const ultimoId = rows.length > 0 ? parseInt(rows[rows.length - 1].get('ID') || 0) : 0;
@@ -179,12 +193,9 @@ async function registrarReclamo(datos, waId) {
 // ENDPOINTS
 // ======================
 
-// Health Check
-app.get('/', (req, res) => {
-  res.status(200).send('✅ Servidor Cooperativa Activo');
-});
+app.get('/', (req, res) => res.status(200).send('✅ Servidor Cooperativa Activo'));
 
-// === FIX 4: Verificación del Webhook (GET) con hub.mode validado ===
+// Verificación del Webhook (GET)
 app.get('/webhook', (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
@@ -194,25 +205,23 @@ app.get('/webhook', (req, res) => {
     console.log("✅ WEBHOOK VERIFICADO por Meta");
     res.status(200).send(challenge);
   } else {
-    console.warn(`⚠️ Verificación fallida. Token recibido: "${token}", Esperado: "${VERIFY_TOKEN}"`);
+    console.warn(`⚠️ Verificación fallida. Token recibido: "${token}"`);
     res.sendStatus(403);
   }
 });
 
-// === Procesamiento de mensajes (POST) ===
+// Procesamiento de mensajes (POST)
 app.post('/webhook', async (req, res) => {
-  // === FIX 5: Log inmediato para confirmar que Meta está llegando ===
   console.log("📬 POST recibido de Meta:", JSON.stringify(req.body).substring(0, 300));
 
   const body = req.body;
 
-  // === FIX 6: Siempre responder 200 a Meta (incluso en casos no manejados) ===
   if (body.object !== 'whatsapp_business_account') {
-    console.log("ℹ️ Objeto no reconocido:", body.object, "— respondiendo 200 igual");
+    console.log("ℹ️ Objeto no reconocido:", body.object);
     return res.sendStatus(200);
   }
 
-  // Responder 200 a Meta de inmediato para evitar timeouts y reintentos
+  // Responder 200 a Meta de inmediato para evitar timeouts
   res.sendStatus(200);
 
   // Procesamiento asíncrono DESPUÉS de responder
@@ -222,24 +231,24 @@ app.post('/webhook', async (req, res) => {
     const value = changes?.value;
     const message = value?.messages?.[0];
 
+    // Si no hay mensaje (status update de entrega/lectura), ignorar
     if (!message) {
-      console.log("ℹ️ Sin mensajes en el payload (puede ser status update)");
+      console.log("ℹ️ Sin mensajes en el payload (status update)");
       return;
     }
 
-    console.log(`📨 Tipo de mensaje recibido: ${message.type} de ${message.from}`);
+    const waId = message.from;
+    console.log(`📨 Tipo de mensaje: "${message.type}" de ${waId}`);
 
-    // Detectamos si el mensaje viene de un WhatsApp Flow
+    // === CASO 1: Respuesta de un WhatsApp Flow (reclamo completado) ===
     if (message.type === 'interactive' && message.interactive?.nfm_reply) {
       const nfm = message.interactive.nfm_reply;
-      const waId = message.from;
 
       if (!PRIVATE_KEY) {
         console.error("❌ No se puede desencriptar: falta PRIVATE_KEY");
         return;
       }
 
-      // Desencriptación RSA/AES del Flow
       const aesKey = crypto.privateDecrypt(
         {
           key: PRIVATE_KEY,
@@ -249,12 +258,10 @@ app.post('/webhook', async (req, res) => {
         Buffer.from(nfm.encrypted_aes_key, 'base64')
       );
 
-      const iv = Buffer.from(nfm.initial_vector, 'base64');
-
-      // === FIX 7: Detectar automáticamente si la clave es AES-128 (16 bytes) o AES-256 (32 bytes) ===
       const algoritmo = aesKey.length === 16 ? 'aes-128-gcm' : 'aes-256-gcm';
-      console.log(`🔑 Usando algoritmo: ${algoritmo} (key length: ${aesKey.length} bytes)`);
+      console.log(`🔑 Usando algoritmo: ${algoritmo} (key: ${aesKey.length} bytes)`);
 
+      const iv = Buffer.from(nfm.initial_vector, 'base64');
       const decipher = crypto.createDecipheriv(algoritmo, aesKey, iv);
 
       const encryptedBuffer = Buffer.from(nfm.response_json, 'base64');
@@ -273,14 +280,20 @@ app.post('/webhook', async (req, res) => {
       if (idReclamo) {
         await enviarMensajeWhatsApp(waId, {
           type: "text",
-          text: { body: `✅ Tu reclamo fue registrado con el ID: *${idReclamo}*. Te contactaremos a la brevedad.` }
+          text: {
+            body: `✅ Tu reclamo fue registrado con el ID: *${idReclamo}*.\nTe contactaremos a la brevedad.`
+          }
         });
       } else {
-        console.warn("⚠️ No se pudo guardar el reclamo — servicio no reconocido o error en Sheets");
+        console.warn("⚠️ No se pudo guardar el reclamo");
       }
+
+    // === CASO 2: Cualquier otro mensaje → bienvenida + plantilla ===
     } else {
-      console.log("ℹ️ Mensaje recibido pero no es un Flow nfm_reply — ignorado");
+      console.log(`💬 Mensaje entrante de ${waId} — enviando bienvenida y plantilla`);
+      await enviarBienvenidaYPlantilla(waId);
     }
+
   } catch (e) {
     console.error("❌ Error procesando POST:", e.message, e.stack);
   }
