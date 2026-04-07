@@ -261,6 +261,7 @@ function desencriptarFlow(encryptedAesKey, initialVector, encryptedData) {
 
 // =============================================
 // FUNCIÓN: Encriptar respuesta para el Flow
+// Responde con Base64 puro (requerido por Meta)
 // =============================================
 function encriptarRespuestaFlow(encryptedAesKey, initialVector, responseData) {
   const aesKey = crypto.privateDecrypt(
@@ -283,8 +284,63 @@ function encriptarRespuestaFlow(encryptedAesKey, initialVector, responseData) {
   ]);
   const tag = cipher.getAuthTag();
 
-  // Concatenar encrypted + tag y devolver como Base64 puro
   return Buffer.concat([encrypted, tag]).toString('base64');
+}
+
+// =============================================
+// MANEJADOR CENTRAL DEL FLOW
+// Usado tanto en /flow como en /webhook
+// =============================================
+async function manejarFlow(body, res) {
+  const { encrypted_aes_key, initial_vector, encrypted_flow_data } = body;
+
+  if (!encrypted_aes_key || !initial_vector || !encrypted_flow_data) {
+    return false; // No es un request de Flow
+  }
+
+  console.log("🔄 Request de Flow detectado — procesando...");
+
+  if (!PRIVATE_KEY) {
+    console.error("❌ Falta PRIVATE_KEY");
+    res.status(500).send('Error de configuración');
+    return true;
+  }
+
+  try {
+    const flowData = desencriptarFlow(encrypted_aes_key, initial_vector, encrypted_flow_data);
+    console.log("🔄 Flow action:", flowData.action, "| screen:", flowData.screen);
+
+    let responseData;
+
+    if (flowData.action === 'ping') {
+      console.log("🏓 Ping de Meta — respondiendo active");
+      responseData = { data: { status: "active" } };
+    } else if (flowData.action === 'INIT') {
+      responseData = { screen: "INGRESO_SUMINISTRO", data: {} };
+    } else if (flowData.action === 'data_exchange') {
+      responseData = {
+        screen: flowData.screen,
+        data: flowData.data || {}
+      };
+    } else {
+      responseData = { data: { status: "ok" } };
+    }
+
+    const encryptedResponse = encriptarRespuestaFlow(
+      encrypted_aes_key,
+      initial_vector,
+      responseData
+    );
+
+    res.set('Content-Type', 'text/plain');
+    res.status(200).send(encryptedResponse);
+    return true;
+
+  } catch (e) {
+    console.error("❌ Error procesando Flow:", e.message, e.stack);
+    res.status(500).send('Error procesando Flow');
+    return true;
+  }
 }
 
 // ======================
@@ -310,66 +366,27 @@ app.get('/webhook', (req, res) => {
 
 // =============================================
 // ENDPOINT DEL FLOW (/flow)
-// Meta llama aquí en cada acción del Flow y
-// para el health check de verificación
 // =============================================
 app.post('/flow', async (req, res) => {
   console.log("🔄 POST recibido en /flow");
-
-  try {
-    if (!PRIVATE_KEY) {
-      console.error("❌ Falta PRIVATE_KEY");
-      return res.status(500).send('Error de configuración');
-    }
-
-    const { encrypted_aes_key, initial_vector, encrypted_flow_data } = req.body;
-
-    // Desencriptar el request de Meta
-    const flowData = desencriptarFlow(encrypted_aes_key, initial_vector, encrypted_flow_data);
-    console.log("🔄 Flow action:", flowData.action, "| screen:", flowData.screen);
-
-    let responseData;
-
-    if (flowData.action === 'ping') {
-      // Health check de Meta — responder que el servidor está activo
-      console.log("🏓 Ping de Meta — respondiendo active");
-      responseData = { data: { status: "active" } };
-    } else if (flowData.action === 'INIT') {
-      // Primera carga del Flow
-      responseData = { screen: "INGRESO_SUMINISTRO", data: {} };
-    } else if (flowData.action === 'data_exchange') {
-      // Navegación entre pantallas — pasar datos al siguiente screen
-      responseData = {
-        screen: flowData.screen,
-        data: flowData.data || {}
-      };
-    } else {
-      responseData = { data: { status: "ok" } };
-    }
-
-    // === CORRECCIÓN: Responder con Base64 puro, no JSON ===
-    const encryptedResponse = encriptarRespuestaFlow(
-      encrypted_aes_key,
-      initial_vector,
-      responseData
-    );
-
-    res.set('Content-Type', 'text/plain');
-    res.status(200).send(encryptedResponse);
-
-  } catch (e) {
-    console.error("❌ Error en /flow:", e.message, e.stack);
-    res.status(500).send('Error procesando Flow');
-  }
+  await manejarFlow(req.body, res);
 });
 
 // =============================================
 // ENDPOINT PRINCIPAL DEL WEBHOOK (POST)
 // =============================================
 app.post('/webhook', async (req, res) => {
-  console.log("📬 POST recibido de Meta:", JSON.stringify(req.body).substring(0, 300));
+  console.log("📬 POST recibido en /webhook:", JSON.stringify(req.body).substring(0, 200));
 
   const body = req.body;
+
+  // === Detectar si es un request de Flow llegando a /webhook ===
+  // (ocurre cuando el Flow tiene configurado /webhook como endpoint)
+  if (body.encrypted_flow_data) {
+    console.log("🔄 Request de Flow detectado en /webhook — manejando...");
+    await manejarFlow(body, res);
+    return;
+  }
 
   if (body.object !== 'whatsapp_business_account') {
     console.log("ℹ️ Objeto no reconocido:", body.object);
