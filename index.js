@@ -7,15 +7,13 @@ require('dotenv').config();
 const app = express();
 
 // =============================================
-// 1️⃣  RAW BODY para /flow
+// 1️⃣  RAW BODY — captura el body crudo en TODAS las rutas
 //     DEBE ir ANTES de cualquier otro parser.
-//     Meta envía el body cifrado como texto plano;
-//     si express.json() lo toca primero, se rompe.
+//     Meta puede enviar requests de Flow tanto a /flow
+//     como a /webhook (según la config de la app).
+//     El raw body queda en req.rawBody para uso interno.
 // =============================================
-console.log("🔑 PRIVATE_KEY length:", PRIVATE_KEY?.length);
-console.log("🔑 PRIVATE_KEY inicio:", PRIVATE_KEY?.substring(0, 50));
-console.log("🔑 PRIVATE_KEY fin:", PRIVATE_KEY?.slice(-50));
-app.use('/flow', (req, res, next) => {
+app.use((req, res, next) => {
   let rawBody = '';
   req.setEncoding('utf8');
   req.on('data', chunk => { rawBody += chunk; });
@@ -24,32 +22,10 @@ app.use('/flow', (req, res, next) => {
     try {
       req.body = JSON.parse(rawBody);
     } catch (e) {
-      console.warn('⚠️ /flow: body no es JSON válido, rawBody (100):', rawBody.substring(0, 100));
+      // No es JSON — puede ser texto plano u otro formato
       req.body = {};
     }
     next();
-  });
-});
-
-// =============================================
-// 2️⃣  Parser genérico para el resto de rutas
-// =============================================
-app.use((req, res, next) => {
-  express.json()(req, res, (err) => {
-    if (err) {
-      express.text({ type: '*/*' })(req, res, (err2) => {
-        if (err2) return next(err2);
-        try {
-          if (typeof req.body === 'string') req.body = JSON.parse(req.body);
-        } catch (e) {
-          console.warn('⚠️ Body no es JSON válido:', req.body?.substring?.(0, 100));
-          req.body = {};
-        }
-        next();
-      });
-    } else {
-      next();
-    }
   });
 });
 
@@ -422,11 +398,15 @@ app.post('/flow', async (req, res) => {
 app.post('/webhook', async (req, res) => {
   console.log('📬 POST recibido en /webhook:', JSON.stringify(req.body).substring(0, 200));
 
-  const body = req.body;
+  // rawBody como fallback por si el parser falló
+  let body = req.body;
+  if (!body || !Object.keys(body).length) {
+    try { body = JSON.parse(req.rawBody); } catch (e) { body = {}; }
+  }
 
-  // Detectar si es un request de Flow llegando a /webhook (por si acaso)
+  // Detectar si es un request de Flow (cuando la app de Meta usa /webhook como endpoint)
   if (body.encrypted_flow_data) {
-    console.log('🔄 Request de Flow en /webhook — redirigiendo al manejador...');
+    console.log('🔄 Request de Flow en /webhook — procesando como Flow...');
     await manejarFlow(body, res);
     return;
   }
