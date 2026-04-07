@@ -264,13 +264,14 @@ function desencriptarFlow(encryptedAesKey, initialVector, encryptedData) {
 
 // =============================================
 // FUNCIÓN: Encriptar respuesta para el Flow
-// IMPORTANTE: Meta requiere IV invertido para la respuesta
+// ✅ CORRECTO: Meta requiere flip de bits en el IV (XOR 0xFF)
+//    NO usar .reverse() — invierte orden de bytes, no los bits
 // =============================================
 function encriptarRespuestaFlow(aesKey, iv, responseData) {
   const algoritmo = aesKey.length === 16 ? 'aes-128-gcm' : 'aes-256-gcm';
 
-  // IV invertido — requerido por Meta para la respuesta
-  const ivInvertido = Buffer.from(iv).reverse();
+  // ✅ Flip de bits en cada byte — requerido por Meta
+  const ivInvertido = Buffer.from(iv).map(byte => byte ^ 0xFF);
 
   const cipher = crypto.createCipheriv(algoritmo, aesKey, ivInvertido);
 
@@ -289,7 +290,6 @@ function encriptarRespuestaFlow(aesKey, iv, responseData) {
 // MANEJADOR CENTRAL DEL FLOW
 // =============================================
 async function manejarFlow(body, res) {
-  // Log completo para diagnóstico
   console.log('🔍 manejarFlow — keys recibidas:', Object.keys(body));
   console.log('🔍 manejarFlow — body (300 chars):', JSON.stringify(body).substring(0, 300));
 
@@ -378,7 +378,6 @@ app.post('/flow', async (req, res) => {
   console.log('🔄 POST recibido en /flow');
   console.log('📦 rawBody (primeros 200):', req.rawBody?.substring(0, 200));
 
-  // Si el body llegó vacío pero hay rawBody, intentar usarlo
   let body = req.body;
   if (!body?.encrypted_aes_key && req.rawBody) {
     try { body = JSON.parse(req.rawBody); } catch (e) { /* ya logueado arriba */ }
@@ -398,13 +397,12 @@ app.post('/flow', async (req, res) => {
 app.post('/webhook', async (req, res) => {
   console.log('📬 POST recibido en /webhook:', JSON.stringify(req.body).substring(0, 200));
 
-  // rawBody como fallback por si el parser falló
   let body = req.body;
   if (!body || !Object.keys(body).length) {
     try { body = JSON.parse(req.rawBody); } catch (e) { body = {}; }
   }
 
-  // Detectar si es un request de Flow (cuando la app de Meta usa /webhook como endpoint)
+  // Detectar si es un request de Flow
   if (body.encrypted_flow_data) {
     console.log('🔄 Request de Flow en /webhook — procesando como Flow...');
     await manejarFlow(body, res);
