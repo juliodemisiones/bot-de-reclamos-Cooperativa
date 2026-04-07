@@ -484,17 +484,36 @@ app.post('/webhook', async (req, res) => {
     if (message.type === 'interactive' && message.interactive?.nfm_reply) {
       const nfm = message.interactive.nfm_reply;
 
-      if (!PRIVATE_KEY) {
-        console.error('❌ No se puede desencriptar: falta PRIVATE_KEY');
-        return;
-      }
+      let flowData;
 
-      const { flowData } = desencriptarFlow(
-        nfm.encrypted_aes_key,
-        nfm.initial_vector,
-        nfm.response_json
-      );
-      console.log(`📩 Flow completado por ${waId}:`, JSON.stringify(flowData));
+      // Con data_exchange los datos llegan en texto plano dentro de response_json
+      if (nfm.response_json && !nfm.encrypted_aes_key) {
+        try {
+          flowData = JSON.parse(nfm.response_json);
+          console.log(`📩 Flow completado (plano) por ${waId}:`, JSON.stringify(flowData));
+        } catch (e) {
+          console.error('❌ Error parseando response_json:', e.message);
+          return;
+        }
+      } else {
+        // Fallback: datos encriptados (flow sin data_exchange)
+        if (!PRIVATE_KEY) {
+          console.error('❌ No se puede desencriptar: falta PRIVATE_KEY');
+          return;
+        }
+        try {
+          const result = desencriptarFlow(
+            nfm.encrypted_aes_key,
+            nfm.initial_vector,
+            nfm.response_json
+          );
+          flowData = result.flowData;
+          console.log(`📩 Flow completado (encriptado) por ${waId}:`, JSON.stringify(flowData));
+        } catch (e) {
+          console.error('❌ Error desencriptando nfm_reply:', e.message);
+          return;
+        }
+      }
 
       const idReclamo = await registrarReclamo(flowData, waId);
 
