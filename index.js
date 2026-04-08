@@ -191,21 +191,19 @@ async function registrarReclamo(datos, waId) {
       timeZone: 'America/Argentina/Buenos_Aires'
     });
 
-    // Insertar en fila 2 (debajo del encabezado) para que reclamos recientes queden arriba
-    await sheet.insertRows(1, 1); // inserta 1 fila en el índice 1 (fila 2 del sheet)
-    const rowsActualizadas = await sheet.getRows();
-    const newRowObj = rowsActualizadas[0]; // índice 0 = primera fila de datos = fila 2
-    newRowObj.set('ID', nuevoId);
-    newRowObj.set('Estado', 'pendiente');
-    newRowObj.set('Fecha y Hora', fechaHora);
-    newRowObj.set('Desde WhatsApp', waId);
-    newRowObj.set('Suministro', datos.suministro || '');
-    newRowObj.set('Nombre', datos.nombre || '');
-    newRowObj.set('Dirección', datos.direccion || '');
-    newRowObj.set('Teléfono Contacto', datos.telefono || '');
-    newRowObj.set('Descripción', datos.mensaje || datos.descripcion || '');
-    newRowObj.set('Marca GPS', '');
-    await newRowObj.save();
+    // Agregar fila al final (simple y confiable)
+    await sheet.addRow({
+      'ID': nuevoId,
+      'Estado': 'pendiente',
+      'Fecha y Hora': fechaHora,
+      'Desde WhatsApp': waId,
+      'Suministro': datos.suministro || '',
+      'Nombre': datos.nombre || '',
+      'Dirección': datos.direccion || '',
+      'Teléfono Contacto': datos.telefono || '',
+      'Descripción': datos.mensaje || datos.descripcion || '',
+      'Marca GPS': ''
+    });
 
     console.log(`✅ Reclamo ID ${nuevoId} guardado en pestaña "${nombrePestaña}"`);
     return nuevoId;
