@@ -191,10 +191,10 @@ async function registrarReclamo(datos, waId) {
       timeZone: 'America/Argentina/Buenos_Aires'
     });
 
-    // Insertar en fila 2 para que reclamos recientes queden arriba
-    await sheet.insertRowAfter(1);
-    const rows2 = await sheet.getRows();
-    const newRowObj = rows2[0]; // fila recién insertada (índice 0 = fila 2)
+    // Insertar en fila 2 (debajo del encabezado) para que reclamos recientes queden arriba
+    await sheet.insertRows(1, 1); // inserta 1 fila en el índice 1 (fila 2 del sheet)
+    const rowsActualizadas = await sheet.getRows();
+    const newRowObj = rowsActualizadas[0]; // índice 0 = primera fila de datos = fila 2
     newRowObj.set('ID', nuevoId);
     newRowObj.set('Estado', 'pendiente');
     newRowObj.set('Fecha y Hora', fechaHora);
