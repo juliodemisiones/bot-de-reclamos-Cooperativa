@@ -174,25 +174,38 @@ async function registrarReclamo(datos, waId) {
     if (!sheet) throw new Error(`No existe la pestaña "${nombrePestaña}"`);
 
     const rows = await sheet.getRows();
-    const ultimoId = rows.length > 0 ? parseInt(rows[rows.length - 1].get('ID') || 0) : 0;
-    const nuevoId = isNaN(ultimoId) ? 1 : ultimoId + 1;
+
+    // --- ID GLOBAL desde hoja CONTADOR (sheet de ENERGÍA) ---
+    const docContador = new GoogleSpreadsheet(SHEET_IDS.ENERGIA, serviceAccountAuth);
+    await docContador.loadInfo();
+    const sheetContador = docContador.sheetsByTitle['CONTADOR'];
+    if (!sheetContador) throw new Error('No existe la pestaña CONTADOR en el sheet de ENERGÍA');
+    await sheetContador.loadCells('A1');
+    const celdaId = sheetContador.getCell(0, 0);
+    const nuevoId = (parseInt(celdaId.value) || 0) + 1;
+    celdaId.value = nuevoId;
+    await sheetContador.saveUpdatedCells();
+    // ---------------------------------------------------------
 
     const fechaHora = new Date().toLocaleString('es-AR', {
       timeZone: 'America/Argentina/Buenos_Aires'
     });
 
-    await sheet.addRow({
-      'ID': nuevoId,
-      'Estado': 'pendiente',
-      'Fecha y Hora': fechaHora,
-      'Desde WhatsApp': waId,
-      'Suministro': datos.suministro || '',
-      'Nombre': datos.nombre || '',
-      'Dirección': datos.direccion || '',
-      'Teléfono': datos.telefono || '',
-      'Descripción': datos.mensaje || datos.descripcion || '',
-      'Marca GPS': ''
-    });
+    // Insertar en fila 2 para que reclamos recientes queden arriba
+    await sheet.insertRowAfter(1);
+    const rows2 = await sheet.getRows();
+    const newRowObj = rows2[0]; // fila recién insertada (índice 0 = fila 2)
+    newRowObj.set('ID', nuevoId);
+    newRowObj.set('Estado', 'pendiente');
+    newRowObj.set('Fecha y Hora', fechaHora);
+    newRowObj.set('Desde WhatsApp', waId);
+    newRowObj.set('Suministro', datos.suministro || '');
+    newRowObj.set('Nombre', datos.nombre || '');
+    newRowObj.set('Dirección', datos.direccion || '');
+    newRowObj.set('Teléfono Contacto', datos.telefono || '');
+    newRowObj.set('Descripción', datos.mensaje || datos.descripcion || '');
+    newRowObj.set('Marca GPS', '');
+    await newRowObj.save();
 
     console.log(`✅ Reclamo ID ${nuevoId} guardado en pestaña "${nombrePestaña}"`);
     return nuevoId;
@@ -206,8 +219,7 @@ async function registrarReclamo(datos, waId) {
 // FUNCIÓN: Guardar ubicación en el último reclamo
 // =============================================
 async function guardarUbicacion(waId, latitud, longitud) {
-  const googleMapsLink = `https://maps.google.com/?q=${latitud},${longitud}`;
-  const valorGPS = `${latitud}, ${longitud} — ${googleMapsLink}`;
+  const valorGPS = `${latitud}, ${longitud}`;
 
   for (const [nombre, spreadsheetId] of Object.entries(SHEET_IDS)) {
     try {
