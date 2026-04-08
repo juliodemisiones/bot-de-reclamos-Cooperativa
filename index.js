@@ -44,15 +44,16 @@ if (!PRIVATE_KEY)           console.error('❌ ERROR: Falta PRIVATE_KEY en Rende
 // --- CONFIGURACIÓN DE GOOGLE SHEETS ---
 let serviceAccountAuth;
 try {
-  const creds = require('./google-key.json');
+  if (!process.env.GOOGLE_KEY_JSON) throw new Error('Falta variable de entorno GOOGLE_KEY_JSON');
+  const creds = JSON.parse(process.env.GOOGLE_KEY_JSON);
   serviceAccountAuth = new JWT({
     email: creds.client_email,
     key: creds.private_key,
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   });
-  console.log('✅ google-key.json cargado correctamente');
+  console.log('✅ Credenciales Google cargadas desde variable de entorno');
 } catch (e) {
-  console.error('❌ ERROR: No se pudo cargar google-key.json:', e.message);
+  console.error('❌ ERROR: No se pudieron cargar credenciales Google:', e.message);
 }
 
 const SHEET_IDS = {
