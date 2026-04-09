@@ -92,7 +92,7 @@ async function enviarMensajeWhatsApp(to, messageData) {
 }
 
 // =============================================
-// FUNCIÓN: Registrar reclamo en Google Sheets (MODIFICADA - INSERTA EN FILA 2)
+// FUNCIÓN: Registrar reclamo en Google Sheets (CORREGIDA)
 // =============================================
 async function registrarReclamo(datos, waId) {
   try {
@@ -119,20 +119,19 @@ async function registrarReclamo(datos, waId) {
       spreadsheetId = SHEET_IDS.TIC;
       nombrePestaña = 'TELEFONÍA';
     } else {
-      console.warn('⚠️ Servicio no reconocido:', datos.servicio, '→ normalizado:', servicio);
+      console.warn('⚠️ Servicio no reconocido:', datos.servicio);
       return null;
     }
 
     const doc = new GoogleSpreadsheet(spreadsheetId, serviceAccountAuth);
     await doc.loadInfo();
-    const sheet = doc.sheetsByTitle[nombrePestaña];
+    let sheet = doc.sheetsByTitle[nombrePestaña];
     if (!sheet) throw new Error(`No existe la pestaña "${nombrePestaña}"`);
 
-    // --- ID GLOBAL desde hoja CONTADOR ---
+    // --- ID GLOBAL ---
     const docContador = new GoogleSpreadsheet(SHEET_IDS.ENERGIA, serviceAccountAuth);
     await docContador.loadInfo();
     const sheetContador = docContador.sheetsByTitle['CONTADOR'];
-    if (!sheetContador) throw new Error('No existe la pestaña CONTADOR en el sheet de ENERGÍA');
     await sheetContador.loadCells('A1');
     const celdaId = sheetContador.getCell(0, 0);
     const nuevoId = (parseInt(celdaId.value) || 0) + 1;
@@ -156,26 +155,32 @@ async function registrarReclamo(datos, waId) {
       'Marca GPS': ''
     };
 
-    // ==================== INSERTAR EN LA FILA 2 ====================
+    // ==================== INTENTO PRINCIPAL: INSERTAR EN FILA 2 ====================
     console.log(`🔄 Intentando insertar reclamo ID ${nuevoId} en fila 2 de "${nombrePestaña}"...`);
     
-    await sheet.loadInfo();                    // Recargamos la información de la hoja
+    await sheet.loadInfo();           // Recargamos la hoja
     await sheet.insertRow(2, nuevaFila, 'USER_ENTERED');
     
-    console.log(`✅ Reclamo ID ${nuevoId} insertado correctamente en la FILA 2 de "${nombrePestaña}"`);
+    console.log(`✅ Reclamo ID ${nuevoId} insertado correctamente en la FILA 2`);
     return nuevoId;
 
   } catch (error) {
-    console.error('❌ Error al insertar en fila 2:', error.message);
+    console.error('❌ Error al intentar insertRow(2):', error.message);
     
-    // Fallback: si falla insertRow, agrega al final
-    console.log('⚠️ Falló insertRow → usando fallback (agregar al final)');
+    // ==================== FALLBACK: Agregar al final ====================
+    console.log('⚠️ Usando fallback: agregando reclamo al final de la hoja');
     try {
+      // Volvemos a cargar el documento y la hoja por seguridad
+      const doc = new GoogleSpreadsheet(spreadsheetId, serviceAccountAuth);
+      await doc.loadInfo();
+      const sheet = doc.sheetsByTitle[nombrePestaña];
+      
       await sheet.addRow(nuevaFila);
-      console.log(`✅ Reclamo guardado al final como fallback`);
+      
+      console.log(`✅ Reclamo ID ${nuevoId} guardado al final (fallback)`);
       return nuevoId;
     } catch (e2) {
-      console.error('❌ También falló el fallback:', e2.message);
+      console.error('❌ Falló también el fallback:', e2.message);
       return null;
     }
   }
