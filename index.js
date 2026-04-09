@@ -135,12 +135,13 @@ async function enviarBienvenidaYPlantilla(waId) {
 }
 
 // =============================================
-// FUNCIÓN: Registrar reclamo en Google Sheets (VERSIÓN FINAL - ORDENADA)
+// FUNCIÓN: Registrar reclamo en Google Sheets
 // =============================================
 async function registrarReclamo(datos, waId) {
   try {
     let spreadsheetId = '';
     let nombrePestaña = '';
+
     const normalizar = (str) =>
       str ? str.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') : '';
 
@@ -162,30 +163,36 @@ async function registrarReclamo(datos, waId) {
       spreadsheetId = SHEET_IDS.TIC;
       nombrePestaña = 'TELEFONÍA';
     } else {
-      console.warn('⚠️ Servicio no reconocido:', datos.servicio);
+      console.warn('⚠️ Servicio no reconocido:', datos.servicio, '→ normalizado:', servicio);
       return null;
     }
 
     const doc = new GoogleSpreadsheet(spreadsheetId, serviceAccountAuth);
     await doc.loadInfo();
     const sheet = doc.sheetsByTitle[nombrePestaña];
+
     if (!sheet) throw new Error(`No existe la pestaña "${nombrePestaña}"`);
 
-    // --- ID GLOBAL ---
+    const rows = await sheet.getRows();
+
+    // --- ID GLOBAL desde hoja CONTADOR (sheet de ENERGÍA) ---
     const docContador = new GoogleSpreadsheet(SHEET_IDS.ENERGIA, serviceAccountAuth);
     await docContador.loadInfo();
     const sheetContador = docContador.sheetsByTitle['CONTADOR'];
+    if (!sheetContador) throw new Error('No existe la pestaña CONTADOR en el sheet de ENERGÍA');
     await sheetContador.loadCells('A1');
     const celdaId = sheetContador.getCell(0, 0);
     const nuevoId = (parseInt(celdaId.value) || 0) + 1;
     celdaId.value = nuevoId;
     await sheetContador.saveUpdatedCells();
+    // ---------------------------------------------------------
 
     const fechaHora = new Date().toLocaleString('es-AR', {
       timeZone: 'America/Argentina/Buenos_Aires'
     });
 
-    const nuevaFila = {
+    // Agregar fila al final (simple y confiable)
+    await sheet.addRow({
       'ID': nuevoId,
       'Estado': 'pendiente',
       'Fecha y Hora': fechaHora,
@@ -196,24 +203,12 @@ async function registrarReclamo(datos, waId) {
       'Teléfono Contacto': datos.telefono || '',
       'Descripción': datos.mensaje || datos.descripcion || '',
       'Marca GPS': ''
-    };
-
-    // Agregar al final
-    await sheet.addRow(nuevaFila);
-    console.log(`✅ Reclamo ID ${nuevoId} agregado al final de "${nombrePestaña}"`);
-
-    // ==================== ORDENAR POR FECHA DESCENDENTE ====================
-    console.log(`🔄 Ordenando hoja "${nombrePestaña}" por fecha (más nuevos arriba)...`);
-    await sheet.sort({
-      column: 'Fecha y Hora',   // Nombre exacto de la columna
-      order: 'desc'
     });
 
-    console.log(`✅ Hoja ordenada correctamente - Reclamos más nuevos arriba`);
+    console.log(`✅ Reclamo ID ${nuevoId} guardado en pestaña "${nombrePestaña}"`);
     return nuevoId;
-
   } catch (error) {
-    console.error('❌ Error en registrarReclamo:', error.message);
+    console.error('❌ Error en Sheets:', error.message, JSON.stringify(error?.response?.data ?? error?.errors ?? error?.toString()));
     return null;
   }
 }
@@ -576,4 +571,3 @@ app.post('/webhook', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Servidor Cooperativa en puerto ${PORT}`);
 });
-
