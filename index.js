@@ -135,12 +135,15 @@ async function enviarBienvenidaYPlantilla(waId) {
 }
 
 // =============================================
-// FUNCIÓN: Registrar reclamo en Google Sheets (CORREGIDA)
+// FUNCIÓN: Registrar reclamo en Google Sheets (VERSIÓN CORREGIDA Y ESTABLE)
 // =============================================
 async function registrarReclamo(datos, waId) {
+  let spreadsheetId = '';
+  let nombrePestaña = '';
+  let nuevoId = null;
+  let nuevaFila = null;
+
   try {
-    let spreadsheetId = '';
-    let nombrePestaña = '';
     const normalizar = (str) =>
       str ? str.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') : '';
 
@@ -166,6 +169,7 @@ async function registrarReclamo(datos, waId) {
       return null;
     }
 
+    // Cargar documento principal
     const doc = new GoogleSpreadsheet(spreadsheetId, serviceAccountAuth);
     await doc.loadInfo();
     let sheet = doc.sheetsByTitle[nombrePestaña];
@@ -177,7 +181,7 @@ async function registrarReclamo(datos, waId) {
     const sheetContador = docContador.sheetsByTitle['CONTADOR'];
     await sheetContador.loadCells('A1');
     const celdaId = sheetContador.getCell(0, 0);
-    const nuevoId = (parseInt(celdaId.value) || 0) + 1;
+    nuevoId = (parseInt(celdaId.value) || 0) + 1;
     celdaId.value = nuevoId;
     await sheetContador.saveUpdatedCells();
 
@@ -185,7 +189,7 @@ async function registrarReclamo(datos, waId) {
       timeZone: 'America/Argentina/Buenos_Aires'
     });
 
-    const nuevaFila = {
+    nuevaFila = {
       'ID': nuevoId,
       'Estado': 'pendiente',
       'Fecha y Hora': fechaHora,
@@ -198,26 +202,31 @@ async function registrarReclamo(datos, waId) {
       'Marca GPS': ''
     };
 
-    // ==================== INTENTO PRINCIPAL: INSERTAR EN FILA 2 ====================
+    // ====================== INTENTO PRINCIPAL ======================
     console.log(`🔄 Intentando insertar reclamo ID ${nuevoId} en fila 2 de "${nombrePestaña}"...`);
     
-    await sheet.loadInfo();           // Recargamos la hoja
+    await sheet.loadInfo();
     await sheet.insertRow(2, nuevaFila, 'USER_ENTERED');
     
-    console.log(`✅ Reclamo ID ${nuevoId} insertado correctamente en la FILA 2`);
+    console.log(`✅ ÉXITO: Reclamo ID ${nuevoId} insertado en la FILA 2`);
     return nuevoId;
 
   } catch (error) {
     console.error('❌ Error al intentar insertRow(2):', error.message);
     
-    // ==================== FALLBACK: Agregar al final ====================
-    console.log('⚠️ Usando fallback: agregando reclamo al final de la hoja');
+    // ====================== FALLBACK: Agregar al final ======================
+    console.log('⚠️ Usando fallback: agregando al final de la hoja');
+    
     try {
-      // Volvemos a cargar el documento y la hoja por seguridad
+      if (!spreadsheetId || !nuevaFila) {
+        console.error('❌ Faltan datos para el fallback');
+        return null;
+      }
+
       const doc = new GoogleSpreadsheet(spreadsheetId, serviceAccountAuth);
       await doc.loadInfo();
       const sheet = doc.sheetsByTitle[nombrePestaña];
-      
+
       await sheet.addRow(nuevaFila);
       
       console.log(`✅ Reclamo ID ${nuevoId} guardado al final (fallback)`);
