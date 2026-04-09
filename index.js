@@ -7,11 +7,7 @@ require('dotenv').config();
 const app = express();
 
 // =============================================
-// 1️⃣  RAW BODY — captura el body crudo en TODAS las rutas
-//     DEBE ir ANTES de cualquier otro parser.
-//     Meta puede enviar requests de Flow tanto a /flow
-//     como a /webhook (según la config de la app).
-//     El raw body queda en req.rawBody para uso interno.
+// 1️⃣ RAW BODY — captura el body crudo en TODAS las rutas
 // =============================================
 app.use((req, res, next) => {
   let rawBody = '';
@@ -38,8 +34,8 @@ const PRIVATE_KEY = process.env.PRIVATE_KEY
 const PHONE_NUMBER_ID = "1049500521582925";
 
 if (!WHATSAPP_ACCESS_TOKEN) console.error('❌ ERROR: Falta WHATSAPP_ACCESS_TOKEN en Render');
-if (!VERIFY_TOKEN)          console.error('❌ ERROR: Falta VERIFY_TOKEN en Render');
-if (!PRIVATE_KEY)           console.error('❌ ERROR: Falta PRIVATE_KEY en Render');
+if (!VERIFY_TOKEN) console.error('❌ ERROR: Falta VERIFY_TOKEN en Render');
+if (!PRIVATE_KEY) console.error('❌ ERROR: Falta PRIVATE_KEY en Render');
 
 // --- CONFIGURACIÓN DE GOOGLE SHEETS ---
 let serviceAccountAuth;
@@ -58,7 +54,7 @@ try {
 
 const SHEET_IDS = {
   ENERGIA: '1jA0FYHcrNS0zaX2dnyIkDf10DQeG6VHa_GA5MYdw0JE',
-  TIC:     '1j7RXTVGlvs9genTq3SAfoWVGTAO-7mX-B2HAvdUzYVQ'
+  TIC: '1j7RXTVGlvs9genTq3SAfoWVGTAO-7mX-B2HAvdUzYVQ'
 };
 
 // =============================================
@@ -96,52 +92,12 @@ async function enviarMensajeWhatsApp(to, messageData) {
 }
 
 // =============================================
-// FUNCIÓN: Texto de bienvenida + plantilla con Flow
-// =============================================
-async function enviarBienvenidaYPlantilla(waId) {
-  await enviarMensajeWhatsApp(waId, {
-    type: 'text',
-    text: {
-      body:
-        'Se ha comunicado con la Cooperativa Luz y Fuerza.\n\n' +
-        'Para dar aviso de corte o falla en alguno de nuestros servicios, a continuación complete el registro de reclamo.\n\n' +
-        '📋 Tenga a mano su *número de suministro eléctrico* (es un dato necesario).\n\n' +
-        'Para consultas administrativas comuníquese al fijo *476000* de lunes a viernes de 6:30 a 13 hs.'
-    }
-  });
-
-  await enviarMensajeWhatsApp(waId, {
-    type: 'template',
-    template: {
-      name: 'reclamos_v3',
-      language: { code: 'es_AR' },
-      components: [
-        {
-          type: 'button',
-          sub_type: 'flow',
-          index: '0',
-          parameters: [
-            {
-              type: 'action',
-              action: {
-                flow_token: `${waId}_${Date.now()}`
-              }
-            }
-          ]
-        }
-      ]
-    }
-  });
-}
-
-// =============================================
-// FUNCIÓN: Registrar reclamo en Google Sheets
+// FUNCIÓN: Registrar reclamo en Google Sheets (MODIFICADA)
 // =============================================
 async function registrarReclamo(datos, waId) {
   try {
     let spreadsheetId = '';
     let nombrePestaña = '';
-
     const normalizar = (str) =>
       str ? str.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') : '';
 
@@ -170,12 +126,9 @@ async function registrarReclamo(datos, waId) {
     const doc = new GoogleSpreadsheet(spreadsheetId, serviceAccountAuth);
     await doc.loadInfo();
     const sheet = doc.sheetsByTitle[nombrePestaña];
-
     if (!sheet) throw new Error(`No existe la pestaña "${nombrePestaña}"`);
 
-    const rows = await sheet.getRows();
-
-    // --- ID GLOBAL desde hoja CONTADOR (sheet de ENERGÍA) ---
+    // --- ID GLOBAL desde hoja CONTADOR ---
     const docContador = new GoogleSpreadsheet(SHEET_IDS.ENERGIA, serviceAccountAuth);
     await docContador.loadInfo();
     const sheetContador = docContador.sheetsByTitle['CONTADOR'];
@@ -185,14 +138,13 @@ async function registrarReclamo(datos, waId) {
     const nuevoId = (parseInt(celdaId.value) || 0) + 1;
     celdaId.value = nuevoId;
     await sheetContador.saveUpdatedCells();
-    // ---------------------------------------------------------
 
     const fechaHora = new Date().toLocaleString('es-AR', {
       timeZone: 'America/Argentina/Buenos_Aires'
     });
 
-    // Agregar fila al final (simple y confiable)
-    await sheet.addRow({
+    // ==================== NUEVA FORMA: INSERTAR EN FILA 2 ====================
+    const nuevaFila = {
       'ID': nuevoId,
       'Estado': 'pendiente',
       'Fecha y Hora': fechaHora,
@@ -203,10 +155,14 @@ async function registrarReclamo(datos, waId) {
       'Teléfono Contacto': datos.telefono || '',
       'Descripción': datos.mensaje || datos.descripcion || '',
       'Marca GPS': ''
-    });
+    };
 
-    console.log(`✅ Reclamo ID ${nuevoId} guardado en pestaña "${nombrePestaña}"`);
+    // Insertar en la fila 2 (desplaza todas las anteriores hacia abajo)
+    await sheet.insertRow(2, nuevaFila, 'USER_ENTERED');
+
+    console.log(`✅ Reclamo ID ${nuevoId} insertado en la FILA 2 de "${nombrePestaña}"`);
     return nuevoId;
+
   } catch (error) {
     console.error('❌ Error en Sheets:', error.message, JSON.stringify(error?.response?.data ?? error?.errors ?? error?.toString()));
     return null;
@@ -218,7 +174,6 @@ async function registrarReclamo(datos, waId) {
 // =============================================
 async function guardarUbicacion(waId, latitud, longitud) {
   const valorGPS = `${latitud}, ${longitud}`;
-
   for (const [nombre, spreadsheetId] of Object.entries(SHEET_IDS)) {
     try {
       const doc = new GoogleSpreadsheet(spreadsheetId, serviceAccountAuth);
@@ -235,7 +190,7 @@ async function guardarUbicacion(waId, latitud, longitud) {
         }
       }
     } catch (e) {
-      console.error(`❌ Error buscando en sheet ${nombre}:`, e.message, JSON.stringify(e?.response?.data ?? e?.errors ?? e?.toString()));
+      console.error(`❌ Error buscando en sheet ${nombre}:`, e.message);
     }
   }
   console.warn(`⚠️ No se encontró reclamo previo de ${waId}`);
@@ -254,44 +209,32 @@ function desencriptarFlow(encryptedAesKey, initialVector, encryptedData) {
     },
     Buffer.from(encryptedAesKey, 'base64')
   );
-
   const algoritmo = aesKey.length === 16 ? 'aes-128-gcm' : 'aes-256-gcm';
   console.log(`🔑 Desencriptando con ${algoritmo} (key: ${aesKey.length} bytes)`);
-
   const iv = Buffer.from(initialVector, 'base64');
   const decipher = crypto.createDecipheriv(algoritmo, aesKey, iv);
-
   const encryptedBuffer = Buffer.from(encryptedData, 'base64');
-  const tag  = encryptedBuffer.slice(-16);
+  const tag = encryptedBuffer.slice(-16);
   const data = encryptedBuffer.slice(0, -16);
-
   decipher.setAuthTag(tag);
   let decrypted = decipher.update(data, 'binary', 'utf8');
   decrypted += decipher.final('utf8');
-
   return { flowData: JSON.parse(decrypted), aesKey, iv };
 }
 
 // =============================================
 // FUNCIÓN: Encriptar respuesta para el Flow
-// ✅ CORRECTO: Meta requiere flip de bits en el IV (XOR 0xFF)
-//    NO usar .reverse() — invierte orden de bytes, no los bits
 // =============================================
 function encriptarRespuestaFlow(aesKey, iv, responseData) {
   const algoritmo = aesKey.length === 16 ? 'aes-128-gcm' : 'aes-256-gcm';
-
-  // ✅ Flip de bits en cada byte — requerido por Meta
   const ivInvertido = Buffer.from(iv).map(byte => byte ^ 0xFF);
-
   const cipher = crypto.createCipheriv(algoritmo, aesKey, ivInvertido);
-
   const responseStr = JSON.stringify(responseData);
   const encrypted = Buffer.concat([
     cipher.update(responseStr, 'utf8'),
     cipher.final()
   ]);
   const tag = cipher.getAuthTag();
-
   return Buffer.concat([encrypted, tag]).toString('base64');
 }
 
@@ -300,16 +243,11 @@ function encriptarRespuestaFlow(aesKey, iv, responseData) {
 // =============================================
 async function manejarFlow(body, res) {
   console.log('🔍 manejarFlow — keys recibidas:', Object.keys(body));
-  console.log('🔍 manejarFlow — body (300 chars):', JSON.stringify(body).substring(0, 300));
-
   const { encrypted_aes_key, initial_vector, encrypted_flow_data } = body;
-
   if (!encrypted_aes_key || !initial_vector || !encrypted_flow_data) {
-    console.warn('⚠️ Faltan campos de Flow. Keys presentes:', Object.keys(body));
+    console.warn('⚠️ Faltan campos de Flow.');
     return false;
   }
-
-  console.log('🔄 Request de Flow detectado — procesando...');
 
   if (!PRIVATE_KEY) {
     console.error('❌ Falta PRIVATE_KEY');
@@ -323,88 +261,48 @@ async function manejarFlow(body, res) {
       initial_vector,
       encrypted_flow_data
     );
-    console.log('🔄 Flow action:', flowData.action, '| screen:', flowData.screen);
-    console.log('🔄 Flow data:', JSON.stringify(flowData.data));
 
     let responseData;
 
-    // ── PING ──────────────────────────────────────────
     if (flowData.action === 'ping') {
-      console.log('🏓 Ping de Meta — respondiendo active');
       responseData = { data: { status: 'active' } };
-
-    // ── INIT ──────────────────────────────────────────
-    // Meta abre el flow — enviamos la primera screen
     } else if (flowData.action === 'INIT') {
-      console.log('🚀 INIT — enviando INGRESO_SUMINISTRO');
-      responseData = {
-        screen: 'INGRESO_SUMINISTRO',
-        data: {}
-      };
-
-    // ── DATA_EXCHANGE ─────────────────────────────────
-    // El usuario tocó "Continuar" / "Siguiente" en una screen
+      responseData = { screen: 'INGRESO_SUMINISTRO', data: {} };
     } else if (flowData.action === 'data_exchange') {
-
       const screen = flowData.screen;
-      const data   = flowData.data || {};
+      const data = flowData.data || {};
 
-      // Viene de INGRESO_SUMINISTRO → va a SELECCION_SERVICIO
       if (screen === 'INGRESO_SUMINISTRO') {
-        console.log('📲 data_exchange desde INGRESO_SUMINISTRO — suministro:', data.suministro);
-        responseData = {
-          screen: 'SELECCION_SERVICIO',
-          data: {
-            suministro: Number(data.suministro)
-          }
-        };
-
-      // Viene de SELECCION_SERVICIO → va a DATOS_ADICIONALES
+        responseData = { screen: 'SELECCION_SERVICIO', data: { suministro: Number(data.suministro) } };
       } else if (screen === 'SELECCION_SERVICIO') {
-        console.log('📲 data_exchange desde SELECCION_SERVICIO — servicio:', data.servicio);
-        responseData = {
-          screen: 'DATOS_ADICIONALES',
-          data: {
-            suministro: Number(data.suministro),
-            servicio:   data.servicio
-          }
+        responseData = { 
+          screen: 'DATOS_ADICIONALES', 
+          data: { suministro: Number(data.suministro), servicio: data.servicio } 
         };
-
-      // Viene de DATOS_ADICIONALES → va a PANTALLA_CIERRE
       } else if (screen === 'DATOS_ADICIONALES') {
-        console.log('📲 data_exchange desde DATOS_ADICIONALES — nombre:', data.nombre);
-        responseData = {
-          screen: 'PANTALLA_CIERRE',
+        responseData = { 
+          screen: 'PANTALLA_CIERRE', 
           data: {
             suministro: Number(data.suministro),
-            servicio:   data.servicio,
-            nombre:     data.nombre,
-            direccion:  data.direccion,
-            telefono:   data.telefono  || '',
-            mensaje:    data.mensaje   || ''
+            servicio: data.servicio,
+            nombre: data.nombre,
+            direccion: data.direccion,
+            telefono: data.telefono || '',
+            mensaje: data.mensaje || ''
           }
         };
-
-      } else {
-        console.warn('⚠️ data_exchange desde screen desconocida:', screen);
-        responseData = { data: { status: 'ok' } };
       }
-
-    // ── FALLBACK ──────────────────────────────────────
     } else {
-      console.warn('⚠️ Action no reconocida:', flowData.action);
       responseData = { data: { status: 'ok' } };
     }
 
     const encryptedResponse = encriptarRespuestaFlow(aesKey, iv, responseData);
-    console.log('✅ Respondiendo al Flow con Base64 (primeros 40 chars):', encryptedResponse.substring(0, 40));
-
     res.set('Content-Type', 'text/plain');
     res.status(200).send(encryptedResponse);
     return true;
 
   } catch (e) {
-    console.error('❌ Error procesando Flow:', e.message, e.stack);
+    console.error('❌ Error procesando Flow:', e.message);
     res.status(500).send('Error procesando Flow');
     return true;
   }
@@ -413,117 +311,66 @@ async function manejarFlow(body, res) {
 // ======================
 // ENDPOINTS
 // ======================
-
 app.get('/', (req, res) => res.status(200).send('✅ Servidor Cooperativa Activo'));
 
-// Verificación del Webhook (GET)
 app.get('/webhook', (req, res) => {
-  const mode      = req.query['hub.mode'];
-  const token     = req.query['hub.verify_token'];
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
-
   if (mode === 'subscribe' && token === VERIFY_TOKEN) {
     console.log('✅ WEBHOOK VERIFICADO por Meta');
     res.status(200).send(challenge);
   } else {
-    console.warn(`⚠️ Verificación fallida. Token recibido: "${token}"`);
     res.sendStatus(403);
   }
 });
 
-// =============================================
-// ENDPOINT DEL FLOW (/flow)
-// =============================================
 app.post('/flow', async (req, res) => {
   console.log('🔄 POST recibido en /flow');
-  console.log('📦 rawBody (primeros 200):', req.rawBody?.substring(0, 200));
-
   let body = req.body;
   if (!body?.encrypted_aes_key && req.rawBody) {
-    try { body = JSON.parse(req.rawBody); } catch (e) { /* ya logueado arriba */ }
+    try { body = JSON.parse(req.rawBody); } catch (e) {}
   }
-
   const handled = await manejarFlow(body, res);
-
-  if (!handled) {
-    console.warn('⚠️ /flow recibió request no reconocido como Flow — respondiendo 200 vacío');
-    res.status(200).send('ok');
-  }
+  if (!handled) res.status(200).send('ok');
 });
 
-// =============================================
-// ENDPOINT PRINCIPAL DEL WEBHOOK (POST)
-// =============================================
 app.post('/webhook', async (req, res) => {
-  console.log('📬 POST recibido en /webhook:', JSON.stringify(req.body).substring(0, 200));
-
   let body = req.body;
   if (!body || !Object.keys(body).length) {
     try { body = JSON.parse(req.rawBody); } catch (e) { body = {}; }
   }
 
-  // Detectar si es un request de Flow
   if (body.encrypted_flow_data) {
-    console.log('🔄 Request de Flow en /webhook — procesando como Flow...');
     await manejarFlow(body, res);
     return;
   }
 
   if (body.object !== 'whatsapp_business_account') {
-    console.log('ℹ️ Objeto no reconocido:', body.object);
     return res.sendStatus(200);
   }
 
-  // Responder 200 a Meta de inmediato
   res.sendStatus(200);
 
   try {
-    const entry   = body.entry?.[0];
+    const entry = body.entry?.[0];
     const changes = entry?.changes?.[0];
-    const value   = changes?.value;
+    const value = changes?.value;
     const message = value?.messages?.[0];
 
-    if (!message) {
-      console.log('ℹ️ Sin mensajes en el payload (status update)');
-      return;
-    }
+    if (!message) return;
 
     const waId = message.from;
-    console.log(`📨 Tipo de mensaje: "${message.type}" de ${waId}`);
 
-    // === CASO 1: Flow completado (nfm_reply) ===
     if (message.type === 'interactive' && message.interactive?.nfm_reply) {
       const nfm = message.interactive.nfm_reply;
-
       let flowData;
 
-      // Con data_exchange los datos llegan en texto plano dentro de response_json
       if (nfm.response_json && !nfm.encrypted_aes_key) {
-        try {
-          flowData = JSON.parse(nfm.response_json);
-          console.log(`📩 Flow completado (plano) por ${waId}:`, JSON.stringify(flowData));
-        } catch (e) {
-          console.error('❌ Error parseando response_json:', e.message);
-          return;
-        }
-      } else {
-        // Fallback: datos encriptados (flow sin data_exchange)
-        if (!PRIVATE_KEY) {
-          console.error('❌ No se puede desencriptar: falta PRIVATE_KEY');
-          return;
-        }
-        try {
-          const result = desencriptarFlow(
-            nfm.encrypted_aes_key,
-            nfm.initial_vector,
-            nfm.response_json
-          );
-          flowData = result.flowData;
-          console.log(`📩 Flow completado (encriptado) por ${waId}:`, JSON.stringify(flowData));
-        } catch (e) {
-          console.error('❌ Error desencriptando nfm_reply:', e.message);
-          return;
-        }
+        flowData = JSON.parse(nfm.response_json);
+      } else if (PRIVATE_KEY) {
+        const result = desencriptarFlow(nfm.encrypted_aes_key, nfm.initial_vector, nfm.response_json);
+        flowData = result.flowData;
       }
 
       const idReclamo = await registrarReclamo(flowData, waId);
@@ -532,41 +379,60 @@ app.post('/webhook', async (req, res) => {
         await enviarMensajeWhatsApp(waId, {
           type: 'text',
           text: {
-            body:
-              `✅ Tu reclamo fue registrado con el ID: *${idReclamo}*.\n\n` +
-              `Si querés, podés compartir tu *ubicación* para que podamos localizar la falla más rápido. 📍`
+            body: `✅ Tu reclamo fue registrado con el ID: *${idReclamo}*.\n\nSi querés, podés compartir tu *ubicación* para que podamos localizar la falla más rápido. 📍`
           }
         });
-      } else {
-        console.warn('⚠️ No se pudo guardar el reclamo');
       }
-
-    // === CASO 2: Ubicación compartida ===
     } else if (message.type === 'location') {
       const { latitude, longitude } = message.location;
-      console.log(`📍 Ubicación recibida de ${waId}: ${latitude}, ${longitude}`);
-
       const guardado = await guardarUbicacion(waId, latitude, longitude);
-
       await enviarMensajeWhatsApp(waId, {
         type: 'text',
         text: {
-          body: guardado
-            ? '📍 Gracias por compartir la ubicación de la falla. Fue registrada en tu reclamo.'
+          body: guardado 
+            ? '📍 Gracias por compartir la ubicación de la falla. Fue registrada en tu reclamo.' 
             : '📍 Ubicación recibida, pero no encontramos un reclamo reciente asociado a tu número.'
         }
       });
-
-    // === CASO 3: Cualquier otro mensaje → bienvenida + plantilla ===
     } else {
-      console.log(`💬 Mensaje de ${waId} — enviando bienvenida y plantilla`);
       await enviarBienvenidaYPlantilla(waId);
     }
-
   } catch (e) {
-    console.error('❌ Error procesando POST:', e.message, e.stack);
+    console.error('❌ Error procesando POST:', e.message);
   }
 });
+
+// =============================================
+// FUNCIÓN: Texto de bienvenida + plantilla con Flow
+// =============================================
+async function enviarBienvenidaYPlantilla(waId) {
+  await enviarMensajeWhatsApp(waId, {
+    type: 'text',
+    text: {
+      body:
+        'Se ha comunicado con la Cooperativa Luz y Fuerza.\n\n' +
+        'Para dar aviso de corte o falla en alguno de nuestros servicios, a continuación complete el registro de reclamo.\n\n' +
+        '📋 Tenga a mano su *número de suministro eléctrico* (es un dato necesario).\n\n' +
+        'Para consultas administrativas comuníquese al fijo *476000* de lunes a viernes de 6:30 a 13 hs.'
+    }
+  });
+
+  await enviarMensajeWhatsApp(waId, {
+    type: 'template',
+    template: {
+      name: 'reclamos_v3',
+      language: { code: 'es_AR' },
+      components: [
+        {
+          type: 'button',
+          sub_type: 'flow',
+          index: '0',
+          parameters: [{ type: 'action', action: { flow_token: `${waId}_${Date.now()}` } }]
+        }
+      ]
+    }
+  });
+}
 
 app.listen(PORT, () => {
   console.log(`🚀 Servidor Cooperativa en puerto ${PORT}`);
