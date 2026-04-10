@@ -253,18 +253,40 @@ async function registrarReclamo(datos, waId) {
 // =============================================
 async function guardarUbicacion(waId, latitud, longitud) {
   const valorGPS = `${latitud}, ${longitud}`;
+  const accessToken = await serviceAccountAuth.getAccessToken();
 
   for (const [nombre, spreadsheetId] of Object.entries(SHEET_IDS)) {
     try {
       const doc = new GoogleSpreadsheet(spreadsheetId, serviceAccountAuth);
       await doc.loadInfo();
+
       for (const sheet of Object.values(doc.sheetsByTitle)) {
+        // Saltar hoja CONTADOR
+        if (sheet.title === 'CONTADOR') continue;
+
         const rows = await sheet.getRows();
-        for (let i = rows.length - 1; i >= 0; i--) {
+        for (let i = 0; i < rows.length; i++) {
           if (rows[i].get('Desde WhatsApp') === waId) {
-            rows[i].set('Marca GPS', valorGPS);
-            await rows[i].save();
-            console.log(`✅ Ubicación guardada para ${waId} en hoja "${sheet.title}"`);
+            // Fila real en la hoja = i + 2 (fila 1 es encabezado, índice base 1)
+            const filaReal = i + 2;
+            const rangeEncoded = encodeURIComponent(`'${sheet.title}'!J${filaReal}`);
+
+            await fetch(
+              `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${rangeEncoded}?valueInputOption=USER_ENTERED`,
+              {
+                method: 'PUT',
+                headers: {
+                  'Authorization': `Bearer ${accessToken.token}`,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                  majorDimension: 'ROWS',
+                  values: [[valorGPS]]
+                })
+              }
+            );
+
+            console.log(`✅ Ubicación guardada para ${waId} en hoja "${sheet.title}" fila ${filaReal}`);
             return true;
           }
         }
@@ -273,6 +295,7 @@ async function guardarUbicacion(waId, latitud, longitud) {
       console.error(`❌ Error buscando en sheet ${nombre}:`, e.message, JSON.stringify(e?.response?.data ?? e?.errors ?? e?.toString()));
     }
   }
+
   console.warn(`⚠️ No se encontró reclamo previo de ${waId}`);
   return false;
 }
@@ -369,7 +392,6 @@ async function manejarFlow(body, res) {
       responseData = { data: { status: 'active' } };
 
     // ── INIT ──────────────────────────────────────────
-    // Meta abre el flow — enviamos la primera screen
     } else if (flowData.action === 'INIT') {
       console.log('🚀 INIT — enviando INGRESO_SUMINISTRO');
       responseData = {
@@ -378,13 +400,11 @@ async function manejarFlow(body, res) {
       };
 
     // ── DATA_EXCHANGE ─────────────────────────────────
-    // El usuario tocó "Continuar" / "Siguiente" en una screen
     } else if (flowData.action === 'data_exchange') {
 
       const screen = flowData.screen;
       const data   = flowData.data || {};
 
-      // Viene de INGRESO_SUMINISTRO → va a SELECCION_SERVICIO
       if (screen === 'INGRESO_SUMINISTRO') {
         console.log('📲 data_exchange desde INGRESO_SUMINISTRO — suministro:', data.suministro);
         responseData = {
@@ -394,7 +414,6 @@ async function manejarFlow(body, res) {
           }
         };
 
-      // Viene de SELECCION_SERVICIO → va a DATOS_ADICIONALES
       } else if (screen === 'SELECCION_SERVICIO') {
         console.log('📲 data_exchange desde SELECCION_SERVICIO — servicio:', data.servicio);
         responseData = {
@@ -405,7 +424,6 @@ async function manejarFlow(body, res) {
           }
         };
 
-      // Viene de DATOS_ADICIONALES → va a PANTALLA_CIERRE
       } else if (screen === 'DATOS_ADICIONALES') {
         console.log('📲 data_exchange desde DATOS_ADICIONALES — nombre:', data.nombre);
         responseData = {
@@ -532,7 +550,6 @@ app.post('/webhook', async (req, res) => {
 
       let flowData;
 
-      // Con data_exchange los datos llegan en texto plano dentro de response_json
       if (nfm.response_json && !nfm.encrypted_aes_key) {
         try {
           flowData = JSON.parse(nfm.response_json);
@@ -542,7 +559,6 @@ app.post('/webhook', async (req, res) => {
           return;
         }
       } else {
-        // Fallback: datos encriptados (flow sin data_exchange)
         if (!PRIVATE_KEY) {
           console.error('❌ No se puede desencriptar: falta PRIVATE_KEY');
           return;
