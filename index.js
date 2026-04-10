@@ -173,8 +173,6 @@ async function registrarReclamo(datos, waId) {
 
     if (!sheet) throw new Error(`No existe la pestaña "${nombrePestaña}"`);
 
-    const rows = await sheet.getRows();
-
     // --- ID GLOBAL desde hoja CONTADOR (sheet de ENERGÍA) ---
     const docContador = new GoogleSpreadsheet(SHEET_IDS.ENERGIA, serviceAccountAuth);
     await docContador.loadInfo();
@@ -193,54 +191,54 @@ async function registrarReclamo(datos, waId) {
 
     const sheetId = sheet.sheetId;
 
-// Paso 1: Insertar fila vacía en índice 1 (después del encabezado)
-const accessToken = await serviceAccountAuth.getAccessToken();
-await fetch(
-  `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
-  {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${accessToken.token}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      requests: [{
-        insertDimension: {
-          range: {
-            sheetId: sheetId,
-            dimension: 'ROWS',
-            startIndex: 1,
-            endIndex: 2
-          },
-          inheritFromBefore: false
-        }
-      }]
-    })
-  }
-);
+    // Paso 1: Insertar fila vacía en índice 1 (después del encabezado)
+    const accessToken = await serviceAccountAuth.getAccessToken();
+    await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken.token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          requests: [{
+            insertDimension: {
+              range: {
+                sheetId: sheetId,
+                dimension: 'ROWS',
+                startIndex: 1,
+                endIndex: 2
+              },
+              inheritFromBefore: false
+            }
+          }]
+        })
+      }
+    );
 
-// Paso 2: Escribir los datos en A2:J2
-const valores = [
-  nuevoId, 'pendiente', fechaHora, waId,
-  datos.suministro || '', datos.nombre || '', datos.direccion || '',
-  datos.telefono || '', datos.mensaje || datos.descripcion || '', ''
-];
+    // Paso 2: Escribir los datos en la fila 2 (A2:J2) de la pestaña correcta
+    const valores = [
+      nuevoId, 'pendiente', fechaHora, waId,
+      datos.suministro || '', datos.nombre || '', datos.direccion || '',
+      datos.telefono || '', datos.mensaje || datos.descripcion || '', ''
+    ];
 
-await fetch(
-  `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/A2:J2?valueInputOption=USER_ENTERED`,
-  {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${accessToken.token}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      range: `'${nombrePestaña}'!A2:J2`,
-      majorDimension: 'ROWS',
-      values: [valores]
-    })
-  }
-);
+    const rangeEncoded = encodeURIComponent(`'${nombrePestaña}'!A2:J2`);
+    await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${rangeEncoded}?valueInputOption=USER_ENTERED`,
+      {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${accessToken.token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          majorDimension: 'ROWS',
+          values: [valores]
+        })
+      }
+    );
 
     console.log(`✅ Reclamo ID ${nuevoId} guardado en pestaña "${nombrePestaña}"`);
     return nuevoId;
