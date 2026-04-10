@@ -62,6 +62,12 @@ const SHEET_IDS = {
 };
 
 // =============================================
+// MAPA EN MEMORIA: waId → último reclamo registrado
+// Permite encontrar la fila exacta al recibir ubicación
+// =============================================
+const ultimoReclamo = new Map();
+
+// =============================================
 // FUNCIÓN GENÉRICA PARA ENVIAR MENSAJES
 // =============================================
 async function enviarMensajeWhatsApp(to, messageData) {
@@ -240,6 +246,9 @@ async function registrarReclamo(datos, waId) {
       }
     );
 
+    // Guardar referencia en memoria para ubicación posterior
+    ultimoReclamo.set(waId, { id: nuevoId, spreadsheetId, nombrePestaña });
+
     console.log(`✅ Reclamo ID ${nuevoId} guardado en pestaña "${nombrePestaña}"`);
     return nuevoId;
   } catch (error) {
@@ -249,55 +258,62 @@ async function registrarReclamo(datos, waId) {
 }
 
 // =============================================
-// FUNCIÓN: Guardar ubicación en el último reclamo
+// FUNCIÓN: Guardar ubicación en el reclamo exacto
+// Busca por ID para evitar confusión con reclamos anteriores
 // =============================================
 async function guardarUbicacion(waId, latitud, longitud) {
   const valorGPS = `${latitud}, ${longitud}`;
   const accessToken = await serviceAccountAuth.getAccessToken();
 
-  for (const [nombre, spreadsheetId] of Object.entries(SHEET_IDS)) {
-    try {
-      const doc = new GoogleSpreadsheet(spreadsheetId, serviceAccountAuth);
-      await doc.loadInfo();
-
-      for (const sheet of Object.values(doc.sheetsByTitle)) {
-        // Saltar hoja CONTADOR
-        if (sheet.title === 'CONTADOR') continue;
-
-        const rows = await sheet.getRows();
-        for (let i = 0; i < rows.length; i++) {
-          if (rows[i].get('Desde WhatsApp') === waId) {
-            // Fila real en la hoja = i + 2 (fila 1 es encabezado, índice base 1)
-            const filaReal = i + 2;
-            const rangeEncoded = encodeURIComponent(`'${sheet.title}'!J${filaReal}`);
-
-            await fetch(
-              `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${rangeEncoded}?valueInputOption=USER_ENTERED`,
-              {
-                method: 'PUT',
-                headers: {
-                  'Authorization': `Bearer ${accessToken.token}`,
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                  majorDimension: 'ROWS',
-                  values: [[valorGPS]]
-                })
-              }
-            );
-
-            console.log(`✅ Ubicación guardada para ${waId} en hoja "${sheet.title}" fila ${filaReal}`);
-            return true;
-          }
-        }
-      }
-    } catch (e) {
-      console.error(`❌ Error buscando en sheet ${nombre}:`, e.message, JSON.stringify(e?.response?.data ?? e?.errors ?? e?.toString()));
-    }
+  const ref = ultimoReclamo.get(waId);
+  if (!ref) {
+    console.warn(`⚠️ No hay reclamo reciente en memoria para ${waId}`);
+    return false;
   }
 
-  console.warn(`⚠️ No se encontró reclamo previo de ${waId}`);
-  return false;
+  const { id, spreadsheetId, nombrePestaña } = ref;
+
+  try {
+    const doc = new GoogleSpreadsheet(spreadsheetId, serviceAccountAuth);
+    await doc.loadInfo();
+    const sheet = doc.sheetsByTitle[nombrePestaña];
+
+    if (!sheet) throw new Error(`No existe la pestaña "${nombrePestaña}"`);
+
+    const rows = await sheet.getRows();
+
+    for (let i = 0; i < rows.length; i++) {
+      if (String(rows[i].get('ID')) === String(id)) {
+        const filaReal = i + 2;
+        const rangeEncoded = encodeURIComponent(`'${nombrePestaña}'!J${filaReal}`);
+
+        await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${rangeEncoded}?valueInputOption=USER_ENTERED`,
+          {
+            method: 'PUT',
+            headers: {
+              'Authorization': `Bearer ${accessToken.token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              majorDimension: 'ROWS',
+              values: [[valorGPS]]
+            })
+          }
+        );
+
+        console.log(`✅ Ubicación guardada para ${waId} (ID ${id}) en hoja "${nombrePestaña}" fila ${filaReal}`);
+        ultimoReclamo.delete(waId); // limpiar memoria
+        return true;
+      }
+    }
+
+    console.warn(`⚠️ No se encontró fila con ID ${id} en "${nombrePestaña}"`);
+    return false;
+  } catch (e) {
+    console.error(`❌ Error guardando ubicación:`, e.message, JSON.stringify(e?.response?.data ?? e?.errors ?? e?.toString()));
+    return false;
+  }
 }
 
 // =============================================
