@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Registro de Reclamos — Cooperativa</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:        #0f1117;
+      --surface:   #181c27;
+      --border:    #2a2f3e;
+      --accent:    #f0a500;
+      --accent-dim:#7a5200;
+      --text:      #e8eaf0;
+      --muted:     #6b7280;
+      --success:   #22c55e;
+      --error:     #ef4444;
+      --radius:    6px;
+      --font-mono: 'IBM Plex Mono', monospace;
+      --font-sans: 'IBM Plex Sans', sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 16px 60px;
+    }
+
+    /* ── HEADER ── */
+    header {
+      width: 100%;
+      max-width: 640px;
+      margin-bottom: 40px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 24px;
+    }
+
+    .header-tag {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--accent);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    header h1 {
+      font-size: 26px;
+      font-weight: 600;
+      line-height: 1.2;
+      color: var(--text);
+    }
+
+    header p {
+      margin-top: 8px;
+      font-size: 14px;
+      color: var(--muted);
+      font-weight: 300;
+    }
+
+    /* ── CARD ── */
+    .card {
+      width: 100%;
+      max-width: 640px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px;
+    }
+
+    /* ── SECCIÓN ── */
+    .section-label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 20px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* ── GRID ── */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .span-2 { grid-column: 1 / -1; }
+
+    /* ── FIELD ── */
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 16px;
+    }
+
+    .grid-2 .field { margin-bottom: 0; }
+
+    label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--muted);
+      letter-spacing: 0.04em;
+    }
+
+    label .req {
+      color: var(--accent);
+      margin-left: 2px;
+    }
+
+    label .opt {
+      font-size: 10px;
+      font-weight: 400;
+      color: var(--muted);
+      opacity: 0.6;
+      margin-left: 4px;
+    }
+
+    input, select, textarea {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-family: var(--font-sans);
+      font-size: 14px;
+      padding: 10px 12px;
+      width: 100%;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      outline: none;
+      appearance: none;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(240,165,0,0.12);
+    }
+
+    input::placeholder, textarea::placeholder {
+      color: var(--muted);
+      opacity: 0.5;
+    }
+
+    select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b7280' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      padding-right: 32px;
+      cursor: pointer;
+    }
+
+    select option { background: var(--surface); }
+
+    textarea { resize: vertical; min-height: 88px; line-height: 1.5; }
+
+    /* ── SEPARADOR ── */
+    .sep {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 24px 0;
+    }
+
+    /* ── BOTÓN ── */
+    button[type="submit"] {
+      width: 100%;
+      padding: 14px;
+      background: var(--accent);
+      color: #0f1117;
+      border: none;
+      border-radius: var(--radius);
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+      margin-top: 8px;
+    }
+
+    button[type="submit"]:hover  { background: #fbbe30; }
+    button[type="submit"]:active { transform: scale(0.99); }
+
+    button[type="submit"]:disabled {
+      background: var(--accent-dim);
+      color: #555;
+      cursor: not-allowed;
+    }
+
+    /* ── SPINNER ── */
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(15,17,23,0.3);
+      border-top-color: #0f1117;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 8px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── TOAST ── */
+    #toast {
+      position: fixed;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      padding: 12px 24px;
+      border-radius: var(--radius);
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      opacity: 0;
+      transition: opacity 0.25s, transform 0.25s;
+      pointer-events: none;
+      white-space: nowrap;
+      z-index: 100;
+    }
+
+    #toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    #toast.success { background: var(--success); color: #fff; }
+    #toast.error   { background: var(--error);   color: #fff; }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 520px) {
+      .grid-2 { grid-template-columns: 1fr; }
+      .card    { padding: 24px 18px; }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="header-tag">Sistema interno · Cooperativa Luz y Fuerza</div>
+    <h1>Registro de Reclamos</h1>
+    <p>Ingreso manual de reclamos por parte del personal de la cooperativa.</p>
+  </header>
+
+  <div class="card">
+    <form id="formReclamo" novalidate>
+
+      <!-- SECTOR / SERVICIO -->
+      <p class="section-label">01 — Servicio</p>
+      <div class="field">
+        <label for="servicio">Servicio <span class="req">*</span></label>
+        <select id="servicio" name="servicio" required>
+          <option value="" disabled selected>Seleccionar servicio…</option>
+          <optgroup label="Sector Energía">
+            <option value="ENERGIA">Energía eléctrica</option>
+            <option value="ALUMBRADO">Alumbrado público</option>
+          </optgroup>
+          <optgroup label="Sector TIC">
+            <option value="INTERNET">Internet</option>
+            <option value="TELEVISION">Televisión</option>
+            <option value="TELEFONIA">Telefonía</option>
+          </optgroup>
+        </select>
+      </div>
+
+      <hr class="sep" />
+
+      <!-- DATOS DEL USUARIO -->
+      <p class="section-label">02 — Datos del solicitante</p>
+      <div class="grid-2">
+
+        <div class="field">
+          <label for="suministro">N° de suministro <span class="req">*</span></label>
+          <input type="text" id="suministro" name="suministro"
+                 placeholder="Ej: 123456" required inputmode="numeric" />
+        </div>
+
+        <div class="field">
+          <label for="telefono">Teléfono de contacto <span class="opt">(opcional)</span></label>
+          <input type="text" id="telefono" name="telefono"
+                 placeholder="Ej: 3764 123456" inputmode="tel" />
+        </div>
+
+        <div class="field span-2">
+          <label for="nombre">Nombre y apellido <span class="req">*</span></label>
+          <input type="text" id="nombre" name="nombre"
+                 placeholder="Ej: Juan Pérez" required />
+        </div>
+
+        <div class="field span-2">
+          <label for="direccion">Dirección <span class="req">*</span></label>
+          <input type="text" id="direccion" name="direccion"
+                 placeholder="Ej: Av. San Martín 450" required />
+        </div>
+
+      </div>
+
+      <hr class="sep" />
+
+      <!-- DESCRIPCIÓN Y UBICACIÓN -->
+      <p class="section-label">03 — Detalle del reclamo</p>
+
+      <div class="field">
+        <label for="descripcion">Descripción <span class="req">*</span></label>
+        <textarea id="descripcion" name="descripcion"
+                  placeholder="Describí el problema reportado…" required></textarea>
+      </div>
+
+      <div class="field">
+        <label for="gps">Ubicación GPS <span class="opt">(opcional — coords o link de mapa)</span></label>
+        <input type="text" id="gps" name="gps"
+               placeholder="Ej: -27.3617, -55.8961  o  https://maps.app.goo.gl/..." />
+      </div>
+
+      <button type="submit" id="btnEnviar">
+        Registrar reclamo
+      </button>
+
+    </form>
+  </div>
+
+  <div id="toast"></div>
+
+  <script>
+    const form    = document.getElementById('formReclamo');
+    const btn     = document.getElementById('btnEnviar');
+    const toast   = document.getElementById('toast');
+
+    function mostrarToast(msg, tipo) {
+      toast.textContent = msg;
+      toast.className   = `show ${tipo}`;
+      setTimeout(() => { toast.className = ''; }, 4000);
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      // Validación básica
+      const requeridos = ['servicio', 'suministro', 'nombre', 'direccion', 'descripcion'];
+      const faltante = requeridos.find(id => !document.getElementById(id).value.trim());
+      if (faltante) {
+        mostrarToast('Completá todos los campos obligatorios.', 'error');
+        document.getElementById(faltante).focus();
+        return;
+      }
+
+      // Estado cargando
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>Registrando…';
+
+      const payload = {
+        servicio:    document.getElementById('servicio').value.trim(),
+        suministro:  document.getElementById('suministro').value.trim(),
+        nombre:      document.getElementById('nombre').value.trim(),
+        direccion:   document.getElementById('direccion').value.trim(),
+        telefono:    document.getElementById('telefono').value.trim(),
+        descripcion: document.getElementById('descripcion').value.trim(),
+        gps:         document.getElementById('gps').value.trim(),
+      };
+
+      try {
+        const resp = await fetch('/reclamo-web', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify(payload)
+        });
+
+        const data = await resp.json();
+
+        if (resp.ok && data.ok) {
+          mostrarToast(`✔ Reclamo registrado — ID ${data.id}`, 'success');
+          form.reset();
+        } else {
+          mostrarToast(`Error: ${data.error || 'No se pudo registrar'}`, 'error');
+        }
+
+      } catch (err) {
+        mostrarToast('Error de conexión con el servidor.', 'error');
+        console.error(err);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = 'Registrar reclamo';
+      }
+    });
+  </script>
+
+</body>
+</html>
