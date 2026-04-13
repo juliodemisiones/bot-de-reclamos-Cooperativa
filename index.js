@@ -1,5 +1,6 @@
 const express = require('express');
 const crypto = require('crypto');
+const path = require('path');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
 require('dotenv').config();
@@ -27,6 +28,12 @@ app.use((req, res, next) => {
     next();
   });
 });
+
+// =============================================
+// 2️⃣  ARCHIVOS ESTÁTICOS — sirve la carpeta /public
+//     Aquí vive el formulario web (index.html)
+// =============================================
+app.use(express.static(path.join(__dirname, 'public')));
 
 // === CONFIGURACIÓN DE VARIABLES DE ENTORNO ===
 const PORT = process.env.PORT || 10000;
@@ -149,8 +156,12 @@ async function enviarBienvenidaYPlantilla(waId) {
 
 // =============================================
 // FUNCIÓN: Registrar reclamo en Google Sheets
+// Usada tanto por WhatsApp como por el formulario web.
+// El parámetro `origen` indica la columna D:
+//   - desde WhatsApp: el número de teléfono (waId)
+//   - desde formulario web: el string "oficina"
 // =============================================
-async function registrarReclamo(datos, waId) {
+async function registrarReclamo(datos, origen) {
   try {
     let spreadsheetId = '';
     let nombrePestaña = '';
@@ -189,7 +200,6 @@ async function registrarReclamo(datos, waId) {
     // --- ID por sector ---
     // ENERGÍA y ALUMBRADO usan el contador del sector Energía.
     // INTERNET, TELEVISIÓN y TELEFONÍA usan el contador del sector TIC.
-    // Cada sheet contador tiene una sola pestaña con el último ID usado en A1.
     const esEnergía = (servicio === 'ENERGIA' || servicio === 'ALUMBRADO');
     const sheetIdContador = esEnergía
       ? SHEET_IDS_CONTADOR.ENERGIA
@@ -237,11 +247,18 @@ async function registrarReclamo(datos, waId) {
       }
     );
 
-    // Paso 2: Escribir los datos en la fila 2 (A2:J2) de la pestaña correcta
+    // Paso 2: Escribir los datos en la fila 2 (A2:J2)
     const valores = [
-      nuevoId, 'pendiente', fechaHora, waId,
-      datos.suministro || '', datos.nombre || '', datos.direccion || '',
-      datos.telefono || '', datos.mensaje || datos.descripcion || '', ''
+      nuevoId,
+      'pendiente',
+      fechaHora,
+      origen,                                      // columna D: waId o "oficina"
+      datos.suministro || '',
+      datos.nombre     || '',
+      datos.direccion  || '',
+      datos.telefono   || '',
+      datos.mensaje    || datos.descripcion || '',
+      datos.gps        || ''                        // columna J: coords o link de mapa
     ];
 
     const rangeEncoded = encodeURIComponent(`'${nombrePestaña}'!A2:J2`);
@@ -260,10 +277,12 @@ async function registrarReclamo(datos, waId) {
       }
     );
 
-    // Guardar referencia en memoria para ubicación posterior
-    ultimoReclamo.set(waId, { id: nuevoId, spreadsheetId, nombrePestaña });
+    // Guardar referencia en memoria para ubicación posterior (solo WhatsApp la usa)
+    if (origen !== 'oficina') {
+      ultimoReclamo.set(origen, { id: nuevoId, spreadsheetId, nombrePestaña });
+    }
 
-    console.log(`✅ Reclamo ID ${nuevoId} guardado en pestaña "${nombrePestaña}"`);
+    console.log(`✅ Reclamo ID ${nuevoId} guardado en pestaña "${nombrePestaña}" — origen: ${origen}`);
     return nuevoId;
   } catch (error) {
     console.error('❌ Error en Sheets:', error.message, JSON.stringify(error?.response?.data ?? error?.errors ?? error?.toString()));
@@ -317,7 +336,7 @@ async function guardarUbicacion(waId, latitud, longitud) {
         );
 
         console.log(`✅ Ubicación guardada para ${waId} (ID ${id}) en hoja "${nombrePestaña}" fila ${filaReal}`);
-        ultimoReclamo.delete(waId); // limpiar memoria
+        ultimoReclamo.delete(waId);
         return true;
       }
     }
@@ -363,23 +382,17 @@ function desencriptarFlow(encryptedAesKey, initialVector, encryptedData) {
 // =============================================
 // FUNCIÓN: Encriptar respuesta para el Flow
 // ✅ CORRECTO: Meta requiere flip de bits en el IV (XOR 0xFF)
-//    NO usar .reverse() — invierte orden de bytes, no los bits
 // =============================================
 function encriptarRespuestaFlow(aesKey, iv, responseData) {
   const algoritmo = aesKey.length === 16 ? 'aes-128-gcm' : 'aes-256-gcm';
-
-  // ✅ Flip de bits en cada byte — requerido por Meta
   const ivInvertido = Buffer.from(iv).map(byte => byte ^ 0xFF);
-
   const cipher = crypto.createCipheriv(algoritmo, aesKey, ivInvertido);
-
   const responseStr = JSON.stringify(responseData);
   const encrypted = Buffer.concat([
     cipher.update(responseStr, 'utf8'),
     cipher.final()
   ]);
   const tag = cipher.getAuthTag();
-
   return Buffer.concat([encrypted, tag]).toString('base64');
 }
 
@@ -416,22 +429,15 @@ async function manejarFlow(body, res) {
 
     let responseData;
 
-    // ── PING ──────────────────────────────────────────
     if (flowData.action === 'ping') {
       console.log('🏓 Ping de Meta — respondiendo active');
       responseData = { data: { status: 'active' } };
 
-    // ── INIT ──────────────────────────────────────────
     } else if (flowData.action === 'INIT') {
       console.log('🚀 INIT — enviando INGRESO_SUMINISTRO');
-      responseData = {
-        screen: 'INGRESO_SUMINISTRO',
-        data: {}
-      };
+      responseData = { screen: 'INGRESO_SUMINISTRO', data: {} };
 
-    // ── DATA_EXCHANGE ─────────────────────────────────
     } else if (flowData.action === 'data_exchange') {
-
       const screen = flowData.screen;
       const data   = flowData.data || {};
 
@@ -439,21 +445,14 @@ async function manejarFlow(body, res) {
         console.log('📲 data_exchange desde INGRESO_SUMINISTRO — suministro:', data.suministro);
         responseData = {
           screen: 'SELECCION_SERVICIO',
-          data: {
-            suministro: Number(data.suministro)
-          }
+          data: { suministro: Number(data.suministro) }
         };
-
       } else if (screen === 'SELECCION_SERVICIO') {
         console.log('📲 data_exchange desde SELECCION_SERVICIO — servicio:', data.servicio);
         responseData = {
           screen: 'DATOS_ADICIONALES',
-          data: {
-            suministro: Number(data.suministro),
-            servicio:   data.servicio
-          }
+          data: { suministro: Number(data.suministro), servicio: data.servicio }
         };
-
       } else if (screen === 'DATOS_ADICIONALES') {
         console.log('📲 data_exchange desde DATOS_ADICIONALES — nombre:', data.nombre);
         responseData = {
@@ -463,17 +462,15 @@ async function manejarFlow(body, res) {
             servicio:   data.servicio,
             nombre:     data.nombre,
             direccion:  data.direccion,
-            telefono:   data.telefono  || '',
-            mensaje:    data.mensaje   || ''
+            telefono:   data.telefono || '',
+            mensaje:    data.mensaje  || ''
           }
         };
-
       } else {
         console.warn('⚠️ data_exchange desde screen desconocida:', screen);
         responseData = { data: { status: 'ok' } };
       }
 
-    // ── FALLBACK ──────────────────────────────────────
     } else {
       console.warn('⚠️ Action no reconocida:', flowData.action);
       responseData = { data: { status: 'ok' } };
@@ -497,7 +494,7 @@ async function manejarFlow(body, res) {
 // ENDPOINTS
 // ======================
 
-app.get('/', (req, res) => res.status(200).send('✅ Servidor Cooperativa Activo'));
+app.get('/health', (req, res) => res.status(200).send('✅ Servidor Cooperativa Activo'));
 
 // Verificación del Webhook (GET)
 app.get('/webhook', (req, res) => {
@@ -535,6 +532,44 @@ app.post('/flow', async (req, res) => {
 });
 
 // =============================================
+// ENDPOINT FORMULARIO WEB (/reclamo-web)
+// Recibe JSON con los campos del formulario y registra
+// el reclamo en la misma sheet, con origen = "oficina"
+// =============================================
+app.post('/reclamo-web', async (req, res) => {
+  console.log('🖥️ POST recibido en /reclamo-web');
+
+  const datos = req.body;
+
+  // Validar campos obligatorios
+  const camposRequeridos = ['servicio', 'suministro', 'nombre', 'direccion', 'descripcion'];
+  const faltantes = camposRequeridos.filter(c => !datos[c] || String(datos[c]).trim() === '');
+
+  if (faltantes.length > 0) {
+    console.warn('⚠️ Faltan campos obligatorios:', faltantes);
+    return res.status(400).json({
+      ok: false,
+      error: `Faltan campos obligatorios: ${faltantes.join(', ')}`
+    });
+  }
+
+  // Normalizar descripcion → mensaje para reutilizar registrarReclamo
+  if (datos.descripcion && !datos.mensaje) {
+    datos.mensaje = datos.descripcion;
+  }
+
+  const idReclamo = await registrarReclamo(datos, 'oficina');
+
+  if (idReclamo) {
+    console.log(`✅ Reclamo web registrado con ID ${idReclamo}`);
+    return res.status(200).json({ ok: true, id: idReclamo });
+  } else {
+    console.error('❌ Error al registrar reclamo web');
+    return res.status(500).json({ ok: false, error: 'Error al guardar en Google Sheets' });
+  }
+});
+
+// =============================================
 // ENDPOINT PRINCIPAL DEL WEBHOOK (POST)
 // =============================================
 app.post('/webhook', async (req, res) => {
@@ -545,7 +580,6 @@ app.post('/webhook', async (req, res) => {
     try { body = JSON.parse(req.rawBody); } catch (e) { body = {}; }
   }
 
-  // Detectar si es un request de Flow
   if (body.encrypted_flow_data) {
     console.log('🔄 Request de Flow en /webhook — procesando como Flow...');
     await manejarFlow(body, res);
@@ -557,7 +591,6 @@ app.post('/webhook', async (req, res) => {
     return res.sendStatus(200);
   }
 
-  // Responder 200 a Meta de inmediato
   res.sendStatus(200);
 
   try {
@@ -577,7 +610,6 @@ app.post('/webhook', async (req, res) => {
     // === CASO 1: Flow completado (nfm_reply) ===
     if (message.type === 'interactive' && message.interactive?.nfm_reply) {
       const nfm = message.interactive.nfm_reply;
-
       let flowData;
 
       if (nfm.response_json && !nfm.encrypted_aes_key) {
@@ -607,6 +639,7 @@ app.post('/webhook', async (req, res) => {
         }
       }
 
+      // WhatsApp usa el waId como origen (columna D)
       const idReclamo = await registrarReclamo(flowData, waId);
 
       if (idReclamo) {
