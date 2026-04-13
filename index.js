@@ -56,9 +56,16 @@ try {
   console.error('❌ ERROR: No se pudieron cargar credenciales Google:', e.message);
 }
 
+// Sheets donde se registran los reclamos (por servicio)
 const SHEET_IDS = {
   ENERGIA: '1jA0FYHcrNS0zaX2dnyIkDf10DQeG6VHa_GA5MYdw0JE',
   TIC:     '1j7RXTVGlvs9genTq3SAfoWVGTAO-7mX-B2HAvdUzYVQ'
+};
+
+// Sheets que actúan como contadores de ID por sector
+const SHEET_IDS_CONTADOR = {
+  ENERGIA: '1NdR7cwTmjK-s47VlpDxXDeqnutn4IRJQk8hbUto7zwI',
+  TIC:     '1m6pOtzlnPUKvOlEkGK-LmV7PNTH-pzhWb3T93077jQI'
 };
 
 // =============================================
@@ -179,17 +186,24 @@ async function registrarReclamo(datos, waId) {
 
     if (!sheet) throw new Error(`No existe la pestaña "${nombrePestaña}"`);
 
-    // --- ID GLOBAL desde hoja CONTADOR (sheet de ENERGÍA) ---
-    const docContador = new GoogleSpreadsheet(SHEET_IDS.ENERGIA, serviceAccountAuth);
+    // --- ID por sector ---
+    // ENERGÍA y ALUMBRADO usan el contador del sector Energía.
+    // INTERNET, TELEVISIÓN y TELEFONÍA usan el contador del sector TIC.
+    // Cada sheet contador tiene una sola pestaña con el último ID usado en A1.
+    const esEnergía = (servicio === 'ENERGIA' || servicio === 'ALUMBRADO');
+    const sheetIdContador = esEnergía
+      ? SHEET_IDS_CONTADOR.ENERGIA
+      : SHEET_IDS_CONTADOR.TIC;
+
+    const docContador = new GoogleSpreadsheet(sheetIdContador, serviceAccountAuth);
     await docContador.loadInfo();
-    const sheetContador = docContador.sheetsByTitle['CONTADOR'];
-    if (!sheetContador) throw new Error('No existe la pestaña CONTADOR en el sheet de ENERGÍA');
+    const sheetContador = docContador.sheetsById[Object.keys(docContador.sheetsById)[0]];
     await sheetContador.loadCells('A1');
     const celdaId = sheetContador.getCell(0, 0);
     const nuevoId = (parseInt(celdaId.value) || 0) + 1;
     celdaId.value = nuevoId;
     await sheetContador.saveUpdatedCells();
-    // ---------------------------------------------------------
+    // ---------------------
 
     const fechaHora = new Date().toLocaleString('es-AR', {
       timeZone: 'America/Argentina/Buenos_Aires'
