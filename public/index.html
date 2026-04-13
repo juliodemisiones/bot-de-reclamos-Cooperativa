@@ -20,6 +20,7 @@
 
   <div class="card">
     <form id="formReclamo" novalidate>
+
       <p class="section-label">01 — Servicio</p>
       <div class="field">
         <label for="servicio">Servicio <span class="req">*</span></label>
@@ -41,44 +42,118 @@
 
       <p class="section-label">02 — Datos del solicitante</p>
       <div class="grid-2">
+
         <div class="field">
           <label for="suministro">N° de suministro <span class="req">*</span></label>
-          <input type="text" id="suministro" name="suministro" placeholder="Ej: 12345" required />
+          <input type="text" id="suministro" name="suministro"
+                 placeholder="Ej: 12345" required />
         </div>
+
         <div class="field">
           <label for="telefono">Teléfono <span class="opt">(opcional)</span></label>
-          <input type="text" id="telefono" name="telefono" placeholder="Ej: 3743 123456" />
+          <input type="text" id="telefono" name="telefono"
+                 placeholder="Ej: 3743 123456" />
         </div>
+
         <div class="field span-2">
           <label for="nombre">Nombre y apellido <span class="req">*</span></label>
-          <input type="text" id="nombre" name="nombre" placeholder="Ej: Juan Pérez" required />
+          <input type="text" id="nombre" name="nombre"
+                 placeholder="Ej: Juan Pérez" required />
         </div>
+
         <div class="field span-2">
           <label for="direccion">Dirección <span class="req">*</span></label>
-          <input type="text" id="direccion" name="direccion" placeholder="Ej: Av. Culmey 90" required />
+          <input type="text" id="direccion" name="direccion"
+                 placeholder="Ej: Av. Culmey 90" required />
         </div>
+
       </div>
 
       <hr style="border: none; border-top: 1px solid var(--border); margin: 24px 0;" />
 
       <p class="section-label">03 — Detalle del reclamo</p>
+
       <div class="field">
         <label for="descripcion">Descripción <span class="req">*</span></label>
-        <textarea id="descripcion" name="descripcion" placeholder="Describí el problema reportado…" required></textarea>
+        <textarea id="descripcion" name="descripcion"
+                  placeholder="Describí el problema reportado…" required></textarea>
       </div>
+
       <div class="field">
         <label for="gps">Ubicación GPS <span class="opt">(opcional - coordenadas lat,long o link a mapa de google o GIS)</span></label>
-        <input type="text" id="gps" name="gps" placeholder="Ej: -27.3617, -55.8961" />
+        <input type="text" id="gps" name="gps"
+               placeholder="Ej: -27.3617, -55.8961" />
       </div>
 
       <button type="submit" id="btnEnviar">Registrar reclamo</button>
+
     </form>
   </div>
 
   <div id="toast"></div>
 
   <script>
-    // ... tu código de JavaScript anterior ...
+    const form  = document.getElementById('formReclamo');
+    const btn   = document.getElementById('btnEnviar');
+    const toast = document.getElementById('toast');
+
+    function mostrarToast(msg, tipo) {
+      toast.textContent = msg;
+      toast.className   = `show ${tipo}`;
+      setTimeout(() => { toast.className = ''; }, 4000);
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      // Validación de campos obligatorios
+      const requeridos = ['servicio', 'suministro', 'nombre', 'direccion', 'descripcion'];
+      const faltante = requeridos.find(id => !document.getElementById(id).value.trim());
+      if (faltante) {
+        mostrarToast('Completá todos los campos obligatorios.', 'error');
+        document.getElementById(faltante).focus();
+        return;
+      }
+
+      // Estado cargando
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>Registrando…';
+
+      const payload = {
+        servicio:    document.getElementById('servicio').value.trim(),
+        suministro:  document.getElementById('suministro').value.trim(),
+        nombre:      document.getElementById('nombre').value.trim(),
+        direccion:   document.getElementById('direccion').value.trim(),
+        telefono:    document.getElementById('telefono').value.trim(),
+        descripcion: document.getElementById('descripcion').value.trim(),
+        gps:         document.getElementById('gps').value.trim(),
+      };
+
+      try {
+        const resp = await fetch('/reclamo-web', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify(payload)
+        });
+
+        const data = await resp.json();
+
+        if (resp.ok && data.ok) {
+          mostrarToast(`✔ Reclamo registrado — ID ${data.id}`, 'success');
+          form.reset();
+        } else {
+          mostrarToast(`Error: ${data.error || 'No se pudo registrar'}`, 'error');
+        }
+
+      } catch (err) {
+        mostrarToast('Error de conexión con el servidor.', 'error');
+        console.error(err);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = 'Registrar reclamo';
+      }
+    });
   </script>
+
 </body>
 </html>
