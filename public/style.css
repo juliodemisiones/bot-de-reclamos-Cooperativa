@@ -1,11 +1,13 @@
 :root {
+  /* Fondo general */
   --bg:        #0f1117;
+  /* Fondo de la tarjeta (el gris que contiene los campos) */
   --surface:   #1f2430;
   --border:    #353b4d;
+  /* Acentos y textos */
   --accent:    #f0a500;
-  --accent-dim:#7a5200;
-  --text:      #e8eaf0;
-  --muted:     #6b7280;
+  --text:      #ffffff;      /* Texto blanco puro para máxima legibilidad */
+  --muted:     #a0aab8;      /* Gris más claro para etiquetas */
   --success:   #22c55e;
   --error:     #ef4444;
   --radius:    6px;
@@ -65,7 +67,7 @@ header p { margin-top: 4px; font-size: 14px; color: var(--muted); }
 
 .section-label {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--accent);
@@ -78,7 +80,7 @@ header p { margin-top: 4px; font-size: 14px; color: var(--muted); }
 .span-2 { grid-column: 1 / -1; }
 
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
-label { font-size: 12px; font-weight: 500; color: var(--muted); }
+label { font-size: 12px; font-weight: 600; color: var(--muted); }
 .req { color: var(--accent); margin-left: 2px; }
 .opt { font-size: 10px; opacity: 0.6; margin-left: 4px; }
 
@@ -87,13 +89,16 @@ input, select, textarea {
   border: 1px solid var(--border);
   border-bottom: 2px solid var(--border);
   border-radius: var(--radius);
-  color: var(--text);
-  padding: 10px 12px;
+  color: #ffffff; /* Texto blanco para escribir */
+  padding: 12px 14px;
   width: 100%;
   outline: none;
+  font-family: var(--font-sans);
 }
 
 input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+input::placeholder, textarea::placeholder { color: #6b7280; }
+
 textarea { resize: vertical; min-height: 88px; }
 
 button[type="submit"] {
@@ -107,6 +112,7 @@ button[type="submit"] {
   font-weight: 600;
   text-transform: uppercase;
   cursor: pointer;
+  margin-top: 8px;
 }
 
 button[type="submit"]:hover { background: #fbbe30; }
@@ -120,3 +126,8 @@ button[type="submit"]:hover { background: #fbbe30; }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 #toast.success { background: var(--success); color: #fff; }
 #toast.error { background: var(--error); color: #fff; }
+
+@media (max-width: 520px) {
+  .grid-2 { grid-template-columns: 1fr; }
+  .card { padding: 24px 18px; }
+}
