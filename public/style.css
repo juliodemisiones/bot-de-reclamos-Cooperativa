@@ -131,3 +131,10 @@ button[type="submit"]:hover { background: #fbbe30; }
   .grid-2 { grid-template-columns: 1fr; }
   .card { padding: 24px 18px; }
 }
+#toast {
+  position: fixed; bottom: 28px; left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  padding: 12px 24px; border-radius: var(--radius);
+  opacity: 0; pointer-events: none; z-index: 100;
+  transition: opacity 0.25s, transform 0.25s;  /* ← agregá esto */
+}
