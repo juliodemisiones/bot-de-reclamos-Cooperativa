@@ -73,7 +73,7 @@ const SHEET_IDS_CONTADOR = {
 // ⚠️ REEMPLAZÁ este ID con el de tu nueva Google Sheet para emails de factura
 // La hoja debe tener una pestaña llamada "EMAILS" con encabezados:
 // Fecha | Suministro | Titular | Email | Tiene Internet | Tiene TV | Teléfono WA
-const SHEET_ID_EMAILS = 'REEMPLAZAR_CON_ID_DE_TU_NUEVA_SHEET';
+const SHEET_ID_EMAILS = 1NDks8ANxSBQMKryuKl_lUGtJPIf5kfyiKWt-KARUNic;
 
 // =============================================
 // MAPAS EN MEMORIA
