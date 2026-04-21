@@ -208,8 +208,8 @@ async function procesarPasoEmail(waId, textoMensaje) {
         action: {
           buttons: [
             { type: 'reply', reply: { id: 'servicios_solo_energia', title: 'Solo energía' } },
-            { type: 'reply', reply: { id: 'servicios_mismo_titular', title: 'Internet mismo titular' } },
-            { type: 'reply', reply: { id: 'servicios_otro_titular', title: 'Internet otro titular' } }
+            { type: 'reply', reply: { id: 'servicios_mismo_titular', title: 'TV/Internet titular' } },
+            { type: 'reply', reply: { id: 'servicios_otro_titular', title: 'TV/Int. otro titular' } }
           ]
         }
       }
