@@ -169,7 +169,8 @@ async function enviarPlantillaReclamo(waId) {
       body:
         'Para dar aviso de corte o falla en alguno de nuestros servicios, ' +
         'a continuación complete el registro de reclamo.\n\n' +
-        '📋 Tenga a mano su *número de suministro eléctrico* (es un dato necesario).\n\n' +
+        '📋 Tenga a mano su *número de suministro eléctrico* (es un dato necesario),\n' + 
+        'incluso si su reclamo es de Internet o TV.\n\n' +
         'Para consultas administrativas comuníquese al fijo *476000* de lunes a viernes de 6:30 a 13 hs.'
     }
   });
