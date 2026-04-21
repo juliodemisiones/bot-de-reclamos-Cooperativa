@@ -8,11 +8,7 @@ require('dotenv').config();
 const app = express();
 
 // =============================================
-// 1️⃣  RAW BODY — captura el body crudo en TODAS las rutas
-//     DEBE ir ANTES de cualquier otro parser.
-//     Meta puede enviar requests de Flow tanto a /flow
-//     como a /webhook (según la config de la app).
-//     El raw body queda en req.rawBody para uso interno.
+// 1️⃣ RAW BODY — captura el body crudo en TODAS las rutas
 // =============================================
 app.use((req, res, next) => {
   let rawBody = '';
@@ -30,8 +26,7 @@ app.use((req, res, next) => {
 });
 
 // =============================================
-// 2️⃣  ARCHIVOS ESTÁTICOS — sirve la carpeta /public
-//     Aquí vive el formulario web (index.html)
+// 2️⃣ ARCHIVOS ESTÁTICOS
 // =============================================
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -45,8 +40,8 @@ const PRIVATE_KEY = process.env.PRIVATE_KEY
 const PHONE_NUMBER_ID = "1049500521582925";
 
 if (!WHATSAPP_ACCESS_TOKEN) console.error('❌ ERROR: Falta WHATSAPP_ACCESS_TOKEN en Render');
-if (!VERIFY_TOKEN)          console.error('❌ ERROR: Falta VERIFY_TOKEN en Render');
-if (!PRIVATE_KEY)           console.error('❌ ERROR: Falta PRIVATE_KEY en Render');
+if (!VERIFY_TOKEN) console.error('❌ ERROR: Falta VERIFY_TOKEN en Render');
+if (!PRIVATE_KEY) console.error('❌ ERROR: Falta PRIVATE_KEY en Render');
 
 // --- CONFIGURACIÓN DE GOOGLE SHEETS ---
 let serviceAccountAuth;
@@ -63,23 +58,36 @@ try {
   console.error('❌ ERROR: No se pudieron cargar credenciales Google:', e.message);
 }
 
-// Sheets donde se registran los reclamos (por servicio)
+// Sheets de reclamos (por servicio)
 const SHEET_IDS = {
   ENERGIA: '1jA0FYHcrNS0zaX2dnyIkDf10DQeG6VHa_GA5MYdw0JE',
-  TIC:     '1j7RXTVGlvs9genTq3SAfoWVGTAO-7mX-B2HAvdUzYVQ'
+  TIC: '1j7RXTVGlvs9genTq3SAfoWVGTAO-7mX-B2HAvdUzYVQ'
 };
 
-// Sheets que actúan como contadores de ID por sector
+// Sheets de contadores de ID por sector
 const SHEET_IDS_CONTADOR = {
   ENERGIA: '1NdR7cwTmjK-s47VlpDxXDeqnutn4IRJQk8hbUto7zwI',
-  TIC:     '1m6pOtzlnPUKvOlEkGK-LmV7PNTH-pzhWb3T93077jQI'
+  TIC: '1m6pOtzlnPUKvOlEkGK-LmV7PNTH-pzhWb3T93077jQI'
 };
 
+// ⚠️ REEMPLAZÁ este ID con el de tu nueva Google Sheet para emails de factura
+// La hoja debe tener una pestaña llamada "EMAILS" con encabezados:
+// Fecha | Suministro | Titular | Email | Tiene Internet | Tiene TV | Teléfono WA
+const SHEET_ID_EMAILS = 'REEMPLAZAR_CON_ID_DE_TU_NUEVA_SHEET';
+
 // =============================================
-// MAPA EN MEMORIA: waId → último reclamo registrado
-// Permite encontrar la fila exacta al recibir ubicación
+// MAPAS EN MEMORIA
 // =============================================
+
+// waId → última referencia de reclamo (para guardar ubicación)
 const ultimoReclamo = new Map();
+
+// waId → estado del flujo de email
+// Valores posibles: 'menu' | 'email_suministro' | 'email_nombre' | 'email_correo' | 'email_servicios'
+const estadoUsuario = new Map();
+
+// waId → datos parciales del flujo de email
+const datosEmailTemp = new Map();
 
 // =============================================
 // FUNCIÓN GENÉRICA PARA ENVIAR MENSAJES
@@ -116,15 +124,51 @@ async function enviarMensajeWhatsApp(to, messageData) {
 }
 
 // =============================================
-// FUNCIÓN: Texto de bienvenida + plantilla con Flow
+// FUNCIÓN: Menú inicial con dos opciones (botones)
 // =============================================
-async function enviarBienvenidaYPlantilla(waId) {
+async function enviarMenuInicial(waId) {
+  await enviarMensajeWhatsApp(waId, {
+    type: 'interactive',
+    interactive: {
+      type: 'button',
+      body: {
+        text:
+          '👋 Bienvenido/a a la *Cooperativa Luz y Fuerza*.\n\n' +
+          '¿En qué podemos ayudarle?'
+      },
+      action: {
+        buttons: [
+          {
+            type: 'reply',
+            reply: {
+              id: 'opcion_reclamo',
+              title: '⚡ Avisar corte o falla'
+            }
+          },
+          {
+            type: 'reply',
+            reply: {
+              id: 'opcion_email',
+              title: '📧 Email para factura'
+            }
+          }
+        ]
+      }
+    }
+  });
+  estadoUsuario.set(waId, 'menu');
+}
+
+// =============================================
+// FUNCIÓN: Enviar plantilla de reclamo (Flow)
+// =============================================
+async function enviarPlantillaReclamo(waId) {
   await enviarMensajeWhatsApp(waId, {
     type: 'text',
     text: {
       body:
-        'Se ha comunicado con la Cooperativa Luz y Fuerza.\n\n' +
-        'Para dar aviso de corte o falla en alguno de nuestros servicios, a continuación complete el registro de reclamo.\n\n' +
+        'Para dar aviso de corte o falla en alguno de nuestros servicios, ' +
+        'a continuación complete el registro de reclamo.\n\n' +
         '📋 Tenga a mano su *número de suministro eléctrico* (es un dato necesario).\n\n' +
         'Para consultas administrativas comuníquese al fijo *476000* de lunes a viernes de 6:30 a 13 hs.'
     }
@@ -155,11 +199,227 @@ async function enviarBienvenidaYPlantilla(waId) {
 }
 
 // =============================================
+// FLUJO DE REGISTRO DE EMAIL — paso a paso
+// =============================================
+
+async function iniciarFlujoEmail(waId) {
+  datosEmailTemp.set(waId, {});
+  estadoUsuario.set(waId, 'email_suministro');
+  await enviarMensajeWhatsApp(waId, {
+    type: 'text',
+    text: {
+      body:
+        '📧 *Registro de email para factura electrónica*\n\n' +
+        'Por favor ingresá tu *número de suministro*:'
+    }
+  });
+}
+
+async function procesarPasoEmail(waId, textoMensaje) {
+  const estado = estadoUsuario.get(waId);
+  const datos = datosEmailTemp.get(waId) || {};
+
+  if (estado === 'email_suministro') {
+    datos.suministro = textoMensaje.trim();
+    datosEmailTemp.set(waId, datos);
+    estadoUsuario.set(waId, 'email_nombre');
+    await enviarMensajeWhatsApp(waId, {
+      type: 'text',
+      text: { body: '👤 ¿Cuál es el *nombre del titular* del servicio?' }
+    });
+
+  } else if (estado === 'email_nombre') {
+    datos.nombre = textoMensaje.trim();
+    datosEmailTemp.set(waId, datos);
+    estadoUsuario.set(waId, 'email_correo');
+    await enviarMensajeWhatsApp(waId, {
+      type: 'text',
+      text: { body: '✉️ ¿Cuál es tu *correo electrónico*?' }
+    });
+
+  } else if (estado === 'email_correo') {
+    // Validación básica de email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(textoMensaje.trim())) {
+      await enviarMensajeWhatsApp(waId, {
+        type: 'text',
+        text: {
+          body: '⚠️ El correo ingresado no parece válido. Por favor ingresá una dirección de email correcta (ejemplo: nombre@gmail.com):'
+        }
+      });
+      return;
+    }
+    datos.email = textoMensaje.trim();
+    datosEmailTemp.set(waId, datos);
+    estadoUsuario.set(waId, 'email_servicios');
+    await enviarMensajeWhatsApp(waId, {
+      type: 'interactive',
+      interactive: {
+        type: 'button',
+        body: {
+          text: '¿Además del servicio de *energía eléctrica*, tenés *internet* y/o *televisión* con la cooperativa?\n\nSi tenés más de un servicio podés indicarlo en el siguiente paso.'
+        },
+        action: {
+          buttons: [
+            { type: 'reply', reply: { id: 'servicios_ambos', title: '📡 Internet y TV' } },
+            { type: 'reply', reply: { id: 'servicios_internet', title: '🌐 Solo Internet' } },
+            { type: 'reply', reply: { id: 'servicios_tv', title: '📺 Solo TV' } }
+          ]
+        }
+      }
+    });
+
+  } else if (estado === 'email_servicios_solo_energia') {
+    // Llegamos acá si eligió "Solo Energía" (no tiene internet ni tv)
+    // Se maneja desde el botón directamente, este estado es por si escribe texto libre
+    await finalizarFlujoEmail(waId, 'ninguno');
+  }
+}
+
+async function procesarBotonServicios(waId, buttonId) {
+  const datos = datosEmailTemp.get(waId) || {};
+  let serviciosExtra = '';
+
+  if (buttonId === 'servicios_ambos') {
+    serviciosExtra = 'Internet y TV';
+  } else if (buttonId === 'servicios_internet') {
+    serviciosExtra = 'Internet';
+  } else if (buttonId === 'servicios_tv') {
+    serviciosExtra = 'TV';
+  } else if (buttonId === 'servicios_ninguno') {
+    serviciosExtra = 'ninguno';
+  }
+
+  datos.serviciosExtra = serviciosExtra;
+  datosEmailTemp.set(waId, datos);
+  await finalizarFlujoEmail(waId, serviciosExtra);
+}
+
+async function finalizarFlujoEmail(waId, serviciosExtra) {
+  const datos = datosEmailTemp.get(waId) || {};
+  datos.serviciosExtra = serviciosExtra;
+
+  // Guardar en Google Sheets
+  const guardado = await registrarEmail(datos, waId);
+
+  // Armar texto de servicios adicionales
+  let textoServicios = '';
+  if (!serviciosExtra || serviciosExtra === 'ninguno') {
+    textoServicios = 'Sin servicios adicionales';
+  } else {
+    textoServicios = serviciosExtra;
+  }
+
+  // Mensaje de confirmación con resumen
+  const resumen =
+    `✅ *¡Listo! Registramos tu email correctamente.*\n\n` +
+    `📋 *Resumen:*\n` +
+    `• Suministro: *${datos.suministro}*\n` +
+    `• Titular: *${datos.nombre}*\n` +
+    `• Email: *${datos.email}*\n` +
+    `• Servicios adicionales: *${textoServicios}*\n\n` +
+    `📬 Recibirá la próxima factura en su correo electrónico.\n\n` +
+    `_Si tiene varias conexiones, por favor repita los pasos para adherir cada una._`;
+
+  await enviarMensajeWhatsApp(waId, {
+    type: 'text',
+    text: { body: resumen }
+  });
+
+  if (!guardado) {
+    console.warn(`⚠️ No se pudo guardar el email de ${waId} en Sheets`);
+  }
+
+  // Limpiar estado
+  estadoUsuario.delete(waId);
+  datosEmailTemp.delete(waId);
+
+  // Volver al menú inicial después de un momento
+  await new Promise(resolve => setTimeout(resolve, 1500));
+  await enviarMenuInicial(waId);
+}
+
+// =============================================
+// FUNCIÓN: Registrar email en Google Sheets
+// =============================================
+async function registrarEmail(datos, waId) {
+  try {
+    const doc = new GoogleSpreadsheet(SHEET_ID_EMAILS, serviceAccountAuth);
+    await doc.loadInfo();
+
+    // Buscamos la pestaña "EMAILS"
+    const sheet = doc.sheetsByTitle['EMAILS'];
+    if (!sheet) throw new Error('No existe la pestaña "EMAILS" en la hoja de emails');
+
+    const fechaHora = new Date().toLocaleString('es-AR', {
+      timeZone: 'America/Argentina/Buenos_Aires'
+    });
+
+    const accessToken = await serviceAccountAuth.getAccessToken();
+
+    // Insertar fila vacía en índice 1 (después del encabezado)
+    await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID_EMAILS}:batchUpdate`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken.token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          requests: [{
+            insertDimension: {
+              range: {
+                sheetId: sheet.sheetId,
+                dimension: 'ROWS',
+                startIndex: 1,
+                endIndex: 2
+              },
+              inheritFromBefore: false
+            }
+          }]
+        })
+      }
+    );
+
+    // Escribir datos en la fila 2
+    // Columnas: Fecha | Suministro | Titular | Email | Servicios Extra | Teléfono WA
+    const valores = [
+      fechaHora,
+      datos.suministro || '',
+      datos.nombre || '',
+      datos.email || '',
+      datos.serviciosExtra || 'ninguno',
+      waId
+    ];
+
+    const rangeEncoded = encodeURIComponent(`'EMAILS'!A2:F2`);
+    await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID_EMAILS}/values/${rangeEncoded}?valueInputOption=USER_ENTERED`,
+      {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${accessToken.token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          majorDimension: 'ROWS',
+          values: [valores]
+        })
+      }
+    );
+
+    console.log(`✅ Email registrado para suministro ${datos.suministro} (${waId})`);
+    return true;
+
+  } catch (error) {
+    console.error('❌ Error guardando email en Sheets:', error.message);
+    return false;
+  }
+}
+
+// =============================================
 // FUNCIÓN: Registrar reclamo en Google Sheets
-// Usada tanto por WhatsApp como por el formulario web.
-// El parámetro `origen` indica la columna D:
-//   - desde WhatsApp: el número de teléfono (waId)
-//   - desde formulario web: el string "oficina"
 // =============================================
 async function registrarReclamo(datos, origen) {
   try {
@@ -194,12 +454,8 @@ async function registrarReclamo(datos, origen) {
     const doc = new GoogleSpreadsheet(spreadsheetId, serviceAccountAuth);
     await doc.loadInfo();
     const sheet = doc.sheetsByTitle[nombrePestaña];
-
     if (!sheet) throw new Error(`No existe la pestaña "${nombrePestaña}"`);
 
-    // --- ID por sector ---
-    // ENERGÍA y ALUMBRADO usan el contador del sector Energía.
-    // INTERNET, TELEVISIÓN y TELEFONÍA usan el contador del sector TIC.
     const esEnergía = (servicio === 'ENERGIA' || servicio === 'ALUMBRADO');
     const sheetIdContador = esEnergía
       ? SHEET_IDS_CONTADOR.ENERGIA
@@ -213,16 +469,14 @@ async function registrarReclamo(datos, origen) {
     const nuevoId = (parseInt(celdaId.value) || 0) + 1;
     celdaId.value = nuevoId;
     await sheetContador.saveUpdatedCells();
-    // ---------------------
 
     const fechaHora = new Date().toLocaleString('es-AR', {
       timeZone: 'America/Argentina/Buenos_Aires'
     });
 
     const sheetId = sheet.sheetId;
-
-    // Paso 1: Insertar fila vacía en índice 1 (después del encabezado)
     const accessToken = await serviceAccountAuth.getAccessToken();
+
     await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
       {
@@ -247,18 +501,17 @@ async function registrarReclamo(datos, origen) {
       }
     );
 
-    // Paso 2: Escribir los datos en la fila 2 (A2:J2)
     const valores = [
       nuevoId,
       'pendiente',
       fechaHora,
-      origen,                                      // columna D: waId o "oficina"
+      origen,
       datos.suministro || '',
-      datos.nombre     || '',
-      datos.direccion  || '',
-      datos.telefono   || '',
-      datos.mensaje    || datos.descripcion || '',
-      datos.gps        || ''                        // columna J: coords o link de mapa
+      datos.nombre || '',
+      datos.direccion || '',
+      datos.telefono || '',
+      datos.mensaje || datos.descripcion || '',
+      datos.gps || ''
     ];
 
     const rangeEncoded = encodeURIComponent(`'${nombrePestaña}'!A2:J2`);
@@ -277,13 +530,13 @@ async function registrarReclamo(datos, origen) {
       }
     );
 
-    // Guardar referencia en memoria para ubicación posterior (solo WhatsApp la usa)
     if (origen !== 'oficina') {
       ultimoReclamo.set(origen, { id: nuevoId, spreadsheetId, nombrePestaña });
     }
 
     console.log(`✅ Reclamo ID ${nuevoId} guardado en pestaña "${nombrePestaña}" — origen: ${origen}`);
     return nuevoId;
+
   } catch (error) {
     console.error('❌ Error en Sheets:', error.message, JSON.stringify(error?.response?.data ?? error?.errors ?? error?.toString()));
     return null;
@@ -292,7 +545,6 @@ async function registrarReclamo(datos, origen) {
 
 // =============================================
 // FUNCIÓN: Guardar ubicación en el reclamo exacto
-// Busca por ID para evitar confusión con reclamos anteriores
 // =============================================
 async function guardarUbicacion(waId, latitud, longitud) {
   const valorGPS = `${latitud}, ${longitud}`;
@@ -310,7 +562,6 @@ async function guardarUbicacion(waId, latitud, longitud) {
     const doc = new GoogleSpreadsheet(spreadsheetId, serviceAccountAuth);
     await doc.loadInfo();
     const sheet = doc.sheetsByTitle[nombrePestaña];
-
     if (!sheet) throw new Error(`No existe la pestaña "${nombrePestaña}"`);
 
     const rows = await sheet.getRows();
@@ -319,7 +570,6 @@ async function guardarUbicacion(waId, latitud, longitud) {
       if (String(rows[i].get('ID')) === String(id)) {
         const filaReal = i + 2;
         const rangeEncoded = encodeURIComponent(`'${nombrePestaña}'!J${filaReal}`);
-
         await fetch(
           `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${rangeEncoded}?valueInputOption=USER_ENTERED`,
           {
@@ -334,7 +584,6 @@ async function guardarUbicacion(waId, latitud, longitud) {
             })
           }
         );
-
         console.log(`✅ Ubicación guardada para ${waId} (ID ${id}) en hoja "${nombrePestaña}" fila ${filaReal}`);
         ultimoReclamo.delete(waId);
         return true;
@@ -343,8 +592,9 @@ async function guardarUbicacion(waId, latitud, longitud) {
 
     console.warn(`⚠️ No se encontró fila con ID ${id} en "${nombrePestaña}"`);
     return false;
+
   } catch (e) {
-    console.error(`❌ Error guardando ubicación:`, e.message, JSON.stringify(e?.response?.data ?? e?.errors ?? e?.toString()));
+    console.error(`❌ Error guardando ubicación:`, e.message);
     return false;
   }
 }
@@ -363,25 +613,19 @@ function desencriptarFlow(encryptedAesKey, initialVector, encryptedData) {
   );
 
   const algoritmo = aesKey.length === 16 ? 'aes-128-gcm' : 'aes-256-gcm';
-  console.log(`🔑 Desencriptando con ${algoritmo} (key: ${aesKey.length} bytes)`);
-
   const iv = Buffer.from(initialVector, 'base64');
   const decipher = crypto.createDecipheriv(algoritmo, aesKey, iv);
-
   const encryptedBuffer = Buffer.from(encryptedData, 'base64');
-  const tag  = encryptedBuffer.slice(-16);
+  const tag = encryptedBuffer.slice(-16);
   const data = encryptedBuffer.slice(0, -16);
-
   decipher.setAuthTag(tag);
   let decrypted = decipher.update(data, 'binary', 'utf8');
   decrypted += decipher.final('utf8');
-
   return { flowData: JSON.parse(decrypted), aesKey, iv };
 }
 
 // =============================================
 // FUNCIÓN: Encriptar respuesta para el Flow
-// ✅ CORRECTO: Meta requiere flip de bits en el IV (XOR 0xFF)
 // =============================================
 function encriptarRespuestaFlow(aesKey, iv, responseData) {
   const algoritmo = aesKey.length === 16 ? 'aes-128-gcm' : 'aes-256-gcm';
@@ -400,20 +644,13 @@ function encriptarRespuestaFlow(aesKey, iv, responseData) {
 // MANEJADOR CENTRAL DEL FLOW
 // =============================================
 async function manejarFlow(body, res) {
-  console.log('🔍 manejarFlow — keys recibidas:', Object.keys(body));
-  console.log('🔍 manejarFlow — body (300 chars):', JSON.stringify(body).substring(0, 300));
-
   const { encrypted_aes_key, initial_vector, encrypted_flow_data } = body;
 
   if (!encrypted_aes_key || !initial_vector || !encrypted_flow_data) {
-    console.warn('⚠️ Faltan campos de Flow. Keys presentes:', Object.keys(body));
     return false;
   }
 
-  console.log('🔄 Request de Flow detectado — procesando...');
-
   if (!PRIVATE_KEY) {
-    console.error('❌ Falta PRIVATE_KEY');
     res.status(500).send('Error de configuración');
     return true;
   }
@@ -424,61 +661,49 @@ async function manejarFlow(body, res) {
       initial_vector,
       encrypted_flow_data
     );
+
     console.log('🔄 Flow action:', flowData.action, '| screen:', flowData.screen);
-    console.log('🔄 Flow data:', JSON.stringify(flowData.data));
 
     let responseData;
 
     if (flowData.action === 'ping') {
-      console.log('🏓 Ping de Meta — respondiendo active');
       responseData = { data: { status: 'active' } };
-
     } else if (flowData.action === 'INIT') {
-      console.log('🚀 INIT — enviando INGRESO_SUMINISTRO');
       responseData = { screen: 'INGRESO_SUMINISTRO', data: {} };
-
     } else if (flowData.action === 'data_exchange') {
       const screen = flowData.screen;
-      const data   = flowData.data || {};
+      const data = flowData.data || {};
 
       if (screen === 'INGRESO_SUMINISTRO') {
-        console.log('📲 data_exchange desde INGRESO_SUMINISTRO — suministro:', data.suministro);
         responseData = {
           screen: 'SELECCION_SERVICIO',
           data: { suministro: Number(data.suministro) }
         };
       } else if (screen === 'SELECCION_SERVICIO') {
-        console.log('📲 data_exchange desde SELECCION_SERVICIO — servicio:', data.servicio);
         responseData = {
           screen: 'DATOS_ADICIONALES',
           data: { suministro: Number(data.suministro), servicio: data.servicio }
         };
       } else if (screen === 'DATOS_ADICIONALES') {
-        console.log('📲 data_exchange desde DATOS_ADICIONALES — nombre:', data.nombre);
         responseData = {
           screen: 'PANTALLA_CIERRE',
           data: {
             suministro: Number(data.suministro),
-            servicio:   data.servicio,
-            nombre:     data.nombre,
-            direccion:  data.direccion,
-            telefono:   data.telefono || '',
-            mensaje:    data.mensaje  || ''
+            servicio: data.servicio,
+            nombre: data.nombre,
+            direccion: data.direccion,
+            telefono: data.telefono || '',
+            mensaje: data.mensaje || ''
           }
         };
       } else {
-        console.warn('⚠️ data_exchange desde screen desconocida:', screen);
         responseData = { data: { status: 'ok' } };
       }
-
     } else {
-      console.warn('⚠️ Action no reconocida:', flowData.action);
       responseData = { data: { status: 'ok' } };
     }
 
     const encryptedResponse = encriptarRespuestaFlow(aesKey, iv, responseData);
-    console.log('✅ Respondiendo al Flow con Base64 (primeros 40 chars):', encryptedResponse.substring(0, 40));
-
     res.set('Content-Type', 'text/plain');
     res.status(200).send(encryptedResponse);
     return true;
@@ -502,15 +727,14 @@ app.get('/', (req, res) => {
 
 // Verificación del Webhook (GET)
 app.get('/webhook', (req, res) => {
-  const mode      = req.query['hub.mode'];
-  const token     = req.query['hub.verify_token'];
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
 
   if (mode === 'subscribe' && token === VERIFY_TOKEN) {
     console.log('✅ WEBHOOK VERIFICADO por Meta');
     res.status(200).send(challenge);
   } else {
-    console.warn(`⚠️ Verificación fallida. Token recibido: "${token}"`);
     res.sendStatus(403);
   }
 });
@@ -519,45 +743,31 @@ app.get('/webhook', (req, res) => {
 // ENDPOINT DEL FLOW (/flow)
 // =============================================
 app.post('/flow', async (req, res) => {
-  console.log('🔄 POST recibido en /flow');
-  console.log('📦 rawBody (primeros 200):', req.rawBody?.substring(0, 200));
-
   let body = req.body;
   if (!body?.encrypted_aes_key && req.rawBody) {
-    try { body = JSON.parse(req.rawBody); } catch (e) { /* ya logueado arriba */ }
+    try { body = JSON.parse(req.rawBody); } catch (e) { }
   }
-
   const handled = await manejarFlow(body, res);
-
   if (!handled) {
-    console.warn('⚠️ /flow recibió request no reconocido como Flow — respondiendo 200 vacío');
     res.status(200).send('ok');
   }
 });
 
 // =============================================
 // ENDPOINT FORMULARIO WEB (/reclamo-web)
-// Recibe JSON con los campos del formulario y registra
-// el reclamo en la misma sheet, con origen = "oficina"
 // =============================================
 app.post('/reclamo-web', async (req, res) => {
-  console.log('🖥️ POST recibido en /reclamo-web');
-
   const datos = req.body;
-
-  // Validar campos obligatorios
   const camposRequeridos = ['servicio', 'suministro', 'nombre', 'direccion', 'descripcion'];
   const faltantes = camposRequeridos.filter(c => !datos[c] || String(datos[c]).trim() === '');
 
   if (faltantes.length > 0) {
-    console.warn('⚠️ Faltan campos obligatorios:', faltantes);
     return res.status(400).json({
       ok: false,
       error: `Faltan campos obligatorios: ${faltantes.join(', ')}`
     });
   }
 
-  // Normalizar descripcion → mensaje para reutilizar registrarReclamo
   if (datos.descripcion && !datos.mensaje) {
     datos.mensaje = datos.descripcion;
   }
@@ -565,10 +775,8 @@ app.post('/reclamo-web', async (req, res) => {
   const idReclamo = await registrarReclamo(datos, 'oficina');
 
   if (idReclamo) {
-    console.log(`✅ Reclamo web registrado con ID ${idReclamo}`);
     return res.status(200).json({ ok: true, id: idReclamo });
   } else {
-    console.error('❌ Error al registrar reclamo web');
     return res.status(500).json({ ok: false, error: 'Error al guardar en Google Sheets' });
   }
 });
@@ -577,41 +785,38 @@ app.post('/reclamo-web', async (req, res) => {
 // ENDPOINT PRINCIPAL DEL WEBHOOK (POST)
 // =============================================
 app.post('/webhook', async (req, res) => {
-  console.log('📬 POST recibido en /webhook:', JSON.stringify(req.body).substring(0, 200));
-
   let body = req.body;
   if (!body || !Object.keys(body).length) {
     try { body = JSON.parse(req.rawBody); } catch (e) { body = {}; }
   }
 
   if (body.encrypted_flow_data) {
-    console.log('🔄 Request de Flow en /webhook — procesando como Flow...');
     await manejarFlow(body, res);
     return;
   }
 
   if (body.object !== 'whatsapp_business_account') {
-    console.log('ℹ️ Objeto no reconocido:', body.object);
     return res.sendStatus(200);
   }
 
   res.sendStatus(200);
 
   try {
-    const entry   = body.entry?.[0];
+    const entry = body.entry?.[0];
     const changes = entry?.changes?.[0];
-    const value   = changes?.value;
+    const value = changes?.value;
     const message = value?.messages?.[0];
 
-    if (!message) {
-      console.log('ℹ️ Sin mensajes en el payload (status update)');
-      return;
-    }
+    if (!message) return;
 
     const waId = message.from;
-    console.log(`📨 Tipo de mensaje: "${message.type}" de ${waId}`);
+    const estadoActual = estadoUsuario.get(waId);
 
-    // === CASO 1: Flow completado (nfm_reply) ===
+    console.log(`📨 Tipo: "${message.type}" | Estado: "${estadoActual}" | De: ${waId}`);
+
+    // ============================================================
+    // CASO A: Flow completado (reclamo de servicio)
+    // ============================================================
     if (message.type === 'interactive' && message.interactive?.nfm_reply) {
       const nfm = message.interactive.nfm_reply;
       let flowData;
@@ -619,31 +824,21 @@ app.post('/webhook', async (req, res) => {
       if (nfm.response_json && !nfm.encrypted_aes_key) {
         try {
           flowData = JSON.parse(nfm.response_json);
-          console.log(`📩 Flow completado (plano) por ${waId}:`, JSON.stringify(flowData));
         } catch (e) {
           console.error('❌ Error parseando response_json:', e.message);
           return;
         }
       } else {
-        if (!PRIVATE_KEY) {
-          console.error('❌ No se puede desencriptar: falta PRIVATE_KEY');
-          return;
-        }
+        if (!PRIVATE_KEY) return;
         try {
-          const result = desencriptarFlow(
-            nfm.encrypted_aes_key,
-            nfm.initial_vector,
-            nfm.response_json
-          );
+          const result = desencriptarFlow(nfm.encrypted_aes_key, nfm.initial_vector, nfm.response_json);
           flowData = result.flowData;
-          console.log(`📩 Flow completado (encriptado) por ${waId}:`, JSON.stringify(flowData));
         } catch (e) {
           console.error('❌ Error desencriptando nfm_reply:', e.message);
           return;
         }
       }
 
-      // WhatsApp usa el waId como origen (columna D)
       const idReclamo = await registrarReclamo(flowData, waId);
 
       if (idReclamo) {
@@ -655,11 +850,42 @@ app.post('/webhook', async (req, res) => {
               `Si querés, podés compartir tu *ubicación* para que podamos localizar la falla más rápido. 📍`
           }
         });
-      } else {
-        console.warn('⚠️ No se pudo guardar el reclamo');
       }
 
-    // === CASO 2: Ubicación compartida ===
+      // Limpiar estado de email por si había algo pendiente
+      estadoUsuario.delete(waId);
+      datosEmailTemp.delete(waId);
+
+    // ============================================================
+    // CASO B: Respuesta a botón interactivo (reply button)
+    // ============================================================
+    } else if (message.type === 'interactive' && message.interactive?.button_reply) {
+      const buttonId = message.interactive.button_reply.id;
+      console.log(`🔘 Botón presionado: "${buttonId}" | Estado: "${estadoActual}"`);
+
+      if (buttonId === 'opcion_reclamo') {
+        // Limpiar cualquier flujo de email en curso
+        estadoUsuario.delete(waId);
+        datosEmailTemp.delete(waId);
+        await enviarPlantillaReclamo(waId);
+
+      } else if (buttonId === 'opcion_email') {
+        await iniciarFlujoEmail(waId);
+
+      } else if (
+        ['servicios_ambos', 'servicios_internet', 'servicios_tv', 'servicios_ninguno'].includes(buttonId)
+        && estadoActual === 'email_servicios'
+      ) {
+        await procesarBotonServicios(waId, buttonId);
+
+      } else {
+        // Botón no reconocido en el estado actual → volver al menú
+        await enviarMenuInicial(waId);
+      }
+
+    // ============================================================
+    // CASO C: Ubicación compartida
+    // ============================================================
     } else if (message.type === 'location') {
       const { latitude, longitude } = message.location;
       console.log(`📍 Ubicación recibida de ${waId}: ${latitude}, ${longitude}`);
@@ -675,10 +901,30 @@ app.post('/webhook', async (req, res) => {
         }
       });
 
-    // === CASO 3: Cualquier otro mensaje → bienvenida + plantilla ===
+    // ============================================================
+    // CASO D: Mensaje de texto libre
+    // ============================================================
+    } else if (message.type === 'text') {
+      const texto = message.text?.body || '';
+
+      // Si el usuario está en algún paso del flujo de email → procesar
+      if (
+        estadoActual === 'email_suministro' ||
+        estadoActual === 'email_nombre' ||
+        estadoActual === 'email_correo'
+      ) {
+        await procesarPasoEmail(waId, texto);
+
+      } else {
+        // Cualquier otro texto → menú inicial
+        await enviarMenuInicial(waId);
+      }
+
+    // ============================================================
+    // CASO E: Cualquier otro tipo de mensaje → menú inicial
+    // ============================================================
     } else {
-      console.log(`💬 Mensaje de ${waId} — enviando bienvenida y plantilla`);
-      await enviarBienvenidaYPlantilla(waId);
+      await enviarMenuInicial(waId);
     }
 
   } catch (e) {
