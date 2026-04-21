@@ -273,8 +273,8 @@ async function procesarPasoEmail(waId, textoMensaje) {
         action: {
           buttons: [
             { type: 'reply', reply: { id: 'servicios_solo_energia', title: 'Solo energía' } },
-            { type: 'reply', reply: { id: 'servicios_mismo_titular', title: 'Internet/TV mismo titular' } },
-            { type: 'reply', reply: { id: 'servicios_otro_titular', title: 'Internet/TV otro titular' } }
+            { type: 'reply', reply: { id: 'servicios_mismo_titular', title: 'TV/Int.mismo titular' } },
+            { type: 'reply', reply: { id: 'servicios_otro_titular', title: 'TV/Int. otro titular' } }
           ]
         }
       }
