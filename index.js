@@ -73,7 +73,7 @@ const SHEET_IDS_CONTADOR = {
 // ⚠️ REEMPLAZÁ este ID con el de tu nueva Google Sheet para emails de factura
 // La hoja debe tener una pestaña llamada "EMAILS" con encabezados:
 // A=Fecha | B=Suministro | C=Titular energía | D=Email | E=Servicios Extra | F=Titular Internet/TV | G=Teléfono WA
-const SHEET_ID_EMAILS = 'REEMPLAZAR_CON_ID_DE_TU_NUEVA_SHEET';
+const SHEET_ID_EMAILS = '1NDks8ANxSBQMKryuKl_lUGtJPIf5kfyiKWt-KARUNic';
 
 // =============================================
 // MAPAS EN MEMORIA
@@ -142,14 +142,14 @@ async function enviarMenuInicial(waId) {
             type: 'reply',
             reply: {
               id: 'opcion_reclamo',
-              title: '⚡ Avisar corte o falla'
+              title: '⚡Avisar corte/falla'
             }
           },
           {
             type: 'reply',
             reply: {
               id: 'opcion_email',
-              title: '📧 Email para factura'
+              title: '📧Registrar Email'
             }
           }
         ]
