@@ -72,8 +72,8 @@ const SHEET_IDS_CONTADOR = {
 
 // ⚠️ REEMPLAZÁ este ID con el de tu nueva Google Sheet para emails de factura
 // La hoja debe tener una pestaña llamada "EMAILS" con encabezados:
-// Fecha | Suministro | Titular | Email | Tiene Internet | Tiene TV | Teléfono WA
-const SHEET_ID_EMAILS = '1NDks8ANxSBQMKryuKl_lUGtJPIf5kfyiKWt-KARUNic';
+// A=Fecha | B=Suministro | C=Titular energía | D=Email | E=Servicios Extra | F=Titular Internet/TV | G=Teléfono WA
+const SHEET_ID_EMAILS = 'REEMPLAZAR_CON_ID_DE_TU_NUEVA_SHEET';
 
 // =============================================
 // MAPAS EN MEMORIA
@@ -142,14 +142,14 @@ async function enviarMenuInicial(waId) {
             type: 'reply',
             reply: {
               id: 'opcion_reclamo',
-              title: '⚡ corte o falla'
+              title: '⚡ Avisar corte o falla'
             }
           },
           {
             type: 'reply',
             reply: {
               id: 'opcion_email',
-              title: '📧 Email de factura'
+              title: '📧 Email para factura'
             }
           }
         ]
@@ -220,7 +220,18 @@ async function procesarPasoEmail(waId, textoMensaje) {
   const datos = datosEmailTemp.get(waId) || {};
 
   if (estado === 'email_suministro') {
-    datos.suministro = textoMensaje.trim();
+    const suministroLimpio = textoMensaje.trim();
+    const suministroRegex = /^\d{3,5}$/;
+    if (!suministroRegex.test(suministroLimpio)) {
+      await enviarMensajeWhatsApp(waId, {
+        type: 'text',
+        text: {
+          body: '⚠️ El número de suministro debe contener entre 3 y 5 dígitos numéricos (por ejemplo: 1234). Por favor ingresalo nuevamente:'
+        }
+      });
+      return;
+    }
+    datos.suministro = suministroLimpio;
     datosEmailTemp.set(waId, datos);
     estadoUsuario.set(waId, 'email_nombre');
     await enviarMensajeWhatsApp(waId, {
@@ -257,68 +268,77 @@ async function procesarPasoEmail(waId, textoMensaje) {
       interactive: {
         type: 'button',
         body: {
-          text: '¿Además del servicio de *energía eléctrica*, tenés *internet* y/o *televisión* con la cooperativa?\n\nSi tenés más de un servicio podés indicarlo en el siguiente paso.'
+          text: '¿Además del servicio de energía, tiene otros servicios? Por favor seleccione:'
         },
         action: {
           buttons: [
-            { type: 'reply', reply: { id: 'servicios_ambos', title: '📡 Internet y TV' } },
-            { type: 'reply', reply: { id: 'servicios_internet', title: '🌐 Solo Internet' } },
-            { type: 'reply', reply: { id: 'servicios_tv', title: '📺 Solo TV' } }
+            { type: 'reply', reply: { id: 'servicios_solo_energia', title: 'Solo energía' } },
+            { type: 'reply', reply: { id: 'servicios_mismo_titular', title: 'Internet/TV mismo titular' } },
+            { type: 'reply', reply: { id: 'servicios_otro_titular', title: 'Internet/TV otro titular' } }
           ]
         }
       }
     });
 
   } else if (estado === 'email_servicios_solo_energia') {
-    // Llegamos acá si eligió "Solo Energía" (no tiene internet ni tv)
-    // Se maneja desde el botón directamente, este estado es por si escribe texto libre
-    await finalizarFlujoEmail(waId, 'ninguno');
-  }
+    // Por si el usuario escribe texto libre en este estado
+    await finalizarFlujoEmail(waId, 'Solo energía', null);
+  } else if (estado === 'email_titular_tic') {
+    // Captura del nombre del titular de internet/TV (otro titular)
+    datos.titularTic = textoMensaje.trim();
+    datosEmailTemp.set(waId, datos);
+    await finalizarFlujoEmail(waId, 'Internet/TV - otro titular', datos.titularTic);
 }
 
 async function procesarBotonServicios(waId, buttonId) {
   const datos = datosEmailTemp.get(waId) || {};
-  let serviciosExtra = '';
 
-  if (buttonId === 'servicios_ambos') {
-    serviciosExtra = 'Internet y TV';
-  } else if (buttonId === 'servicios_internet') {
-    serviciosExtra = 'Internet';
-  } else if (buttonId === 'servicios_tv') {
-    serviciosExtra = 'TV';
-  } else if (buttonId === 'servicios_ninguno') {
-    serviciosExtra = 'ninguno';
+  if (buttonId === 'servicios_solo_energia') {
+    datos.serviciosExtra = 'Solo energía';
+    datosEmailTemp.set(waId, datos);
+    await finalizarFlujoEmail(waId, 'Solo energía', null);
+
+  } else if (buttonId === 'servicios_mismo_titular') {
+    datos.serviciosExtra = 'Internet/TV - mismo titular';
+    datosEmailTemp.set(waId, datos);
+    await finalizarFlujoEmail(waId, 'Internet/TV - mismo titular', null);
+
+  } else if (buttonId === 'servicios_otro_titular') {
+    datos.serviciosExtra = 'Internet/TV - otro titular';
+    datosEmailTemp.set(waId, datos);
+    estadoUsuario.set(waId, 'email_titular_tic');
+    await enviarMensajeWhatsApp(waId, {
+      type: 'text',
+      text: { body: '👤 Indique el *nombre del titular* de Internet/TV:' }
+    });
   }
-
-  datos.serviciosExtra = serviciosExtra;
-  datosEmailTemp.set(waId, datos);
-  await finalizarFlujoEmail(waId, serviciosExtra);
 }
 
-async function finalizarFlujoEmail(waId, serviciosExtra) {
+async function finalizarFlujoEmail(waId, serviciosExtra, titularTic) {
   const datos = datosEmailTemp.get(waId) || {};
   datos.serviciosExtra = serviciosExtra;
+  if (titularTic) datos.titularTic = titularTic;
 
   // Guardar en Google Sheets
   const guardado = await registrarEmail(datos, waId);
 
-  // Armar texto de servicios adicionales
-  let textoServicios = '';
-  if (!serviciosExtra || serviciosExtra === 'ninguno') {
-    textoServicios = 'Sin servicios adicionales';
-  } else {
-    textoServicios = serviciosExtra;
+  // Armar texto del resumen
+  let textoServicios = serviciosExtra || 'Solo energía';
+
+  let lineaTitularTic = '';
+  if (titularTic) {
+    lineaTitularTic = `• Titular Internet/TV: *${titularTic}*\n`;
   }
 
-  // Mensaje de confirmación con resumen
   const resumen =
     `✅ *¡Listo! Registramos tu email correctamente.*\n\n` +
     `📋 *Resumen:*\n` +
     `• Suministro: *${datos.suministro}*\n` +
-    `• Titular: *${datos.nombre}*\n` +
+    `• Titular energía: *${datos.nombre}*\n` +
     `• Email: *${datos.email}*\n` +
-    `• Servicios adicionales: *${textoServicios}*\n\n` +
-    `📬 Recibirá la próxima factura en su correo electrónico.\n\n` +
+    `• Servicios: *${textoServicios}*\n` +
+    lineaTitularTic +
+    `\n📬 Recibirá la próxima factura en su correo electrónico.\n\n` +
     `_Si tiene varias conexiones, por favor repita los pasos para adherir cada una._`;
 
   await enviarMensajeWhatsApp(waId, {
@@ -383,17 +403,18 @@ async function registrarEmail(datos, waId) {
     );
 
     // Escribir datos en la fila 2
-    // Columnas: Fecha | Suministro | Titular | Email | Servicios Extra | Teléfono WA
+    // Columnas: A=Fecha | B=Suministro | C=Titular energía | D=Email | E=Servicios Extra | F=Titular Internet/TV | G=Teléfono WA
     const valores = [
       fechaHora,
       datos.suministro || '',
       datos.nombre || '',
       datos.email || '',
-      datos.serviciosExtra || 'ninguno',
+      datos.serviciosExtra || 'Solo energía',
+      datos.titularTic || '',
       waId
     ];
 
-    const rangeEncoded = encodeURIComponent(`'EMAILS'!A2:F2`);
+    const rangeEncoded = encodeURIComponent(`'EMAILS'!A2:G2`);
     await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID_EMAILS}/values/${rangeEncoded}?valueInputOption=USER_ENTERED`,
       {
@@ -873,7 +894,7 @@ app.post('/webhook', async (req, res) => {
         await iniciarFlujoEmail(waId);
 
       } else if (
-        ['servicios_ambos', 'servicios_internet', 'servicios_tv', 'servicios_ninguno'].includes(buttonId)
+        ['servicios_solo_energia', 'servicios_mismo_titular', 'servicios_otro_titular'].includes(buttonId)
         && estadoActual === 'email_servicios'
       ) {
         await procesarBotonServicios(waId, buttonId);
@@ -911,7 +932,8 @@ app.post('/webhook', async (req, res) => {
       if (
         estadoActual === 'email_suministro' ||
         estadoActual === 'email_nombre' ||
-        estadoActual === 'email_correo'
+        estadoActual === 'email_correo' ||
+        estadoActual === 'email_titular_tic'
       ) {
         await procesarPasoEmail(waId, texto);
 
