@@ -142,14 +142,14 @@ async function enviarMenuInicial(waId) {
             type: 'reply',
             reply: {
               id: 'opcion_reclamo',
-              title: '⚡ Avisar corte o falla'
+              title: '⚡ corte o falla'
             }
           },
           {
             type: 'reply',
             reply: {
               id: 'opcion_email',
-              title: '📧 Email para factura'
+              title: '📧 Email de factura'
             }
           }
         ]
