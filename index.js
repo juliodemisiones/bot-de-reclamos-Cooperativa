@@ -178,7 +178,7 @@ async function enviarPlantillaReclamo(waId) {
   await enviarMensajeWhatsApp(waId, {
     type: 'template',
     template: {
-      name: 'reclamos_v3',
+      name: 'plantilla_v4',
       language: { code: 'es_AR' },
       components: [
         {
