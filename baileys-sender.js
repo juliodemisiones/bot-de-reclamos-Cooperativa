@@ -30,7 +30,7 @@ async function iniciarBaileys() {
   sock = makeWASocket({
     version,
     auth: state,
-    printQRInTerminal: true,
+    printQRInTerminal: false,
     browser: ['Chrome (Linux)', '', ''],
     syncFullHistory: false,
   });
@@ -41,7 +41,10 @@ async function iniciarBaileys() {
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
-      console.log('📱 [Baileys] Escaneá el QR con el número +5493743458615');
+      console.log('📱 [Baileys] QR recibido — generando enlace para escanear...');
+      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`;
+      console.log('🔗 [Baileys] Abrí este enlace en el navegador para ver el QR:');
+      console.log(qrUrl);
     }
 
     if (connection === 'open') {
