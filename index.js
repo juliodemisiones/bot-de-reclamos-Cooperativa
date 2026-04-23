@@ -4,7 +4,7 @@ const path = require('path');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
 require('dotenv').config();
-
+const { iniciarBaileys, enviarAlGrupoTIC } = require('./baileys-sender');
 const app = express();
 
 // =============================================
@@ -862,9 +862,9 @@ app.post('/webhook', async (req, res) => {
       }
 
       const idReclamo = await registrarReclamo(flowData, waId);
-
-      if (idReclamo) {
-        await enviarMensajeWhatsApp(waId, {
+if (idReclamo) {
+  await enviarAlGrupoTIC(flowData, idReclamo);
+  await enviarMensajeWhatsApp(waId, {
           type: 'text',
           text: {
             body:
@@ -957,4 +957,5 @@ app.post('/webhook', async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`🚀 Servidor Cooperativa en puerto ${PORT}`);
+  iniciarBaileys().catch(e => console.error('❌ [Baileys] Error al iniciar:', e.message));
 });
