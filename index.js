@@ -864,7 +864,7 @@ app.post('/webhook', async (req, res) => {
 
       const idReclamo = await registrarReclamo(flowData, waId);
 if (idReclamo) {
-  await enviarAlGrupoTIC(flowData, idReclamo, waId, (id) => {
+  enviarAlGrupoTIC(flowData, idReclamo, waId, (id) => {
   const ubicacion = ubicacionesTemporales.get(id);
   ubicacionesTemporales.delete(id);
   return ubicacion;
