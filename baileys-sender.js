@@ -125,6 +125,10 @@ async function enviarAlGrupoTIC(datos, idReclamo, waId, getUbicacion) {
   // Obtener ubicación si fue compartida en ese tiempo
   const gps = getUbicacion(waId) || 'No compartido';
 
+  const fechaHora = new Date().toLocaleString('es-AR', {
+    timeZone: 'America/Argentina/Buenos_Aires'
+  });
+
   const texto =
     `🚨 *NUEVO RECLAMO TIC — ID ${idReclamo}*\n` +
     `──────────────────────\n` +
@@ -135,8 +139,9 @@ async function enviarAlGrupoTIC(datos, idReclamo, waId, getUbicacion) {
     `📞 *Teléfono:*   ${datos.telefono || '—'}\n` +
     `💬 *Detalle:*    ${datos.mensaje || datos.descripcion || '—'}\n` +
     `📌 *GPS:*        ${gps}\n` +
+    `📱 *Desde:*      ${waId || 'oficina'}\n` +
+    `🕐 *Fecha/Hora:* ${fechaHora}\n` +
     `──────────────────────`;
-
   if (!conectado || !sock) {
     colaEnvio.push(texto);
     return;
