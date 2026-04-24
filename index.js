@@ -81,6 +81,7 @@ const SHEET_ID_EMAILS = '1NDks8ANxSBQMKryuKl_lUGtJPIf5kfyiKWt-KARUNic';
 
 // waId → última referencia de reclamo (para guardar ubicación)
 const ultimoReclamo = new Map();
+const ubicacionesTemporales = new Map();
 
 // waId → estado del flujo de email
 // Valores posibles: 'menu' | 'email_suministro' | 'email_nombre' | 'email_correo' | 'email_servicios'
@@ -863,7 +864,11 @@ app.post('/webhook', async (req, res) => {
 
       const idReclamo = await registrarReclamo(flowData, waId);
 if (idReclamo) {
-  await enviarAlGrupoTIC(flowData, idReclamo);
+  await enviarAlGrupoTIC(flowData, idReclamo, waId, (id) => {
+  const ubicacion = ubicacionesTemporales.get(id);
+  ubicacionesTemporales.delete(id);
+  return ubicacion;
+});
   await enviarMensajeWhatsApp(waId, {
           type: 'text',
           text: {
@@ -912,7 +917,8 @@ if (idReclamo) {
       const { latitude, longitude } = message.location;
       console.log(`📍 Ubicación recibida de ${waId}: ${latitude}, ${longitude}`);
 
-      const guardado = await guardarUbicacion(waId, latitude, longitude);
+      ubicacionesTemporales.set(waId, `https://maps.google.com/?q=${latitude},${longitude}`);
+const guardado = await guardarUbicacion(waId, latitude, longitude);
 
       await enviarMensajeWhatsApp(waId, {
         type: 'text',
