@@ -83,6 +83,7 @@ async function iniciarBaileys() {
 
 async function listarGrupos() {
   try {
+    await new Promise(resolve => setTimeout(resolve, 5000)); // esperar sync
     const groups = await sock.groupFetchAllParticipating();
     console.log('📋 [Baileys] Grupos disponibles:');
     for (const [jid, info] of Object.entries(groups)) {
