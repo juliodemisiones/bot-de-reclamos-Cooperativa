@@ -110,7 +110,7 @@ async function _enviarTexto(texto) {
   }
 }
 
-async function enviarAlGrupoTIC(datos, idReclamo) {
+async function enviarAlGrupoTIC(datos, idReclamo, waId, getUbicacion) {
   const serviciosNormalizados = ['internet', 'television', 'telefonia'];
   const servicioNorm = (datos.servicio || '')
     .toLowerCase()
@@ -118,6 +118,12 @@ async function enviarAlGrupoTIC(datos, idReclamo) {
     .replace(/[\u0300-\u036f]/g, '');
 
   if (!serviciosNormalizados.includes(servicioNorm)) return;
+
+  // Esperar 60 segundos para capturar ubicación
+  await new Promise(resolve => setTimeout(resolve, 60000));
+
+  // Obtener ubicación si fue compartida en ese tiempo
+  const gps = getUbicacion(waId) || 'No compartido';
 
   const texto =
     `🚨 *NUEVO RECLAMO TIC — ID ${idReclamo}*\n` +
@@ -128,11 +134,10 @@ async function enviarAlGrupoTIC(datos, idReclamo) {
     `📍 *Dirección:*  ${datos.direccion || '—'}\n` +
     `📞 *Teléfono:*   ${datos.telefono || '—'}\n` +
     `💬 *Detalle:*    ${datos.mensaje || datos.descripcion || '—'}\n` +
-    `📌 *GPS:*        ${datos.gps || 'No compartido'}\n` +
+    `📌 *GPS:*        ${gps}\n` +
     `──────────────────────`;
 
   if (!conectado || !sock) {
-    console.warn('⚠️ [Baileys] No conectado — mensaje en cola');
     colaEnvio.push(texto);
     return;
   }
