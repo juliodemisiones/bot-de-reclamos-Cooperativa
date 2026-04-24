@@ -862,23 +862,32 @@ app.post('/webhook', async (req, res) => {
         }
       }
 
-      const idReclamo = await registrarReclamo(flowData, waId);
+const idReclamo = await registrarReclamo(flowData, waId);
 if (idReclamo) {
   enviarAlGrupoTIC(flowData, idReclamo, waId, (id) => {
-  const ubicacion = ubicacionesTemporales.get(id);
-  ubicacionesTemporales.delete(id);
-  return ubicacion;
-});
-  await enviarMensajeWhatsApp(waId, {
-          type: 'text',
-          text: {
-            body:
-              `✅ Tu reclamo fue registrado con el ID: *${idReclamo}*.\n\n` +
-              `Si querés, podés compartir tu *ubicación* para que podamos localizar la falla más rápido. 📍`
-          }
-        });
-      }
+    const ubicacion = ubicacionesTemporales.get(id);
+    ubicacionesTemporales.delete(id);
+    return ubicacion;
+  });
 
+  const serviciosNormalizados = ['internet', 'television', 'telefonia'];
+  const servicioNorm = (flowData.servicio || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  const esTIC = serviciosNormalizados.includes(servicioNorm);
+
+  const mensajeConfirmacion = esTIC
+    ? `✅ Tu reclamo fue registrado correctamente.\n\n` +
+      `Si querés, podés compartir tu \*ubicación\* para que podamos localizar la falla más rápido. 📍`
+    : `✅ Tu reclamo fue registrado con el ID: \*${idReclamo}\*.\n\n` +
+      `Si querés, podés compartir tu \*ubicación\* para que podamos localizar la falla más rápido. 📍`;
+
+  await enviarMensajeWhatsApp(waId, {
+    type: 'text',
+    text: { body: mensajeConfirmacion }
+  });
+}
       // Limpiar estado de email por si había algo pendiente
       estadoUsuario.delete(waId);
       datosEmailTemp.delete(waId);
