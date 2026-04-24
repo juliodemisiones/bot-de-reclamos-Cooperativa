@@ -130,8 +130,8 @@ async function enviarAlGrupoTIC(datos, idReclamo, waId, getUbicacion) {
   });
 
   const texto =
-    `🚨 *NUEVO RECLAMO TIC — ID ${idReclamo}*\n` +
-    `──────────────────────\n` +
+    `🚨 *NUEVO RECLAMO TIC*\n` + +
+    `────────────\n` +
     `📡 *Servicio:*    ${(datos.servicio || '').toUpperCase()}\n` +
     `🔢 *Suministro:* ${datos.suministro || '—'}\n` +
     `👤 *Titular:*     ${datos.nombre || '—'}\n` +
@@ -141,7 +141,7 @@ async function enviarAlGrupoTIC(datos, idReclamo, waId, getUbicacion) {
     `📌 *GPS:*        ${gps}\n` +
     `📱 *Desde:*      ${waId || 'oficina'}\n` +
     `🕐 *Fecha/Hora:* ${fechaHora}\n` +
-    `──────────────────────`;
+    `────────────`;
   if (!conectado || !sock) {
     colaEnvio.push(texto);
     return;
