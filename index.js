@@ -37,7 +37,7 @@ const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 const PRIVATE_KEY = process.env.PRIVATE_KEY
   ? process.env.PRIVATE_KEY.replace(/\\n/g, '\n')
   : null;
-const PHONE_NUMBER_ID = "1049500521582925";
+const PHONE_NUMBER_ID = "1130637376793846";
 
 if (!WHATSAPP_ACCESS_TOKEN) console.error('❌ ERROR: Falta WHATSAPP_ACCESS_TOKEN en Render');
 if (!VERIFY_TOKEN) console.error('❌ ERROR: Falta VERIFY_TOKEN en Render');
