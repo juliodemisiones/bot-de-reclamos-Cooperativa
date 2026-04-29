@@ -971,8 +971,22 @@ const guardado = await guardarUbicacion(waId, latitude, longitude);
 });
 // =============================================
 // ENDPOINT: GET /reclamos?sector=ENERGIA|ALUMBRADO
-// Devuelve todas las filas de la pestaña correspondiente
-// con su rowIndex para poder actualizar el estado.
+//
+// Lee las filas usando la Sheets API v4 directamente
+// (fetch por rango), evitando el problema de normalización
+// de encabezados de google-spreadsheet.
+//
+// Columnas de la sheet (A→J):
+//   A: ID
+//   B: Estado
+//   C: Fecha y Hora
+//   D: Desde WhatsApp
+//   E: Suministro
+//   F: Nombre
+//   G: Dirección
+//   H: Teléfono Contacto
+//   I: Descripción
+//   J: Marca GPS
 // =============================================
 app.get('/reclamos', async (req, res) => {
   const sector = (req.query.sector || '').toUpperCase();
@@ -981,89 +995,56 @@ app.get('/reclamos', async (req, res) => {
     return res.status(400).json({ ok: false, error: 'Sector inválido. Usar ENERGIA o ALUMBRADO' });
   }
 
-  const spreadsheetId = SHEET_IDS.ENERGIA; // Ambos están en el mismo sheet
+  const spreadsheetId = SHEET_IDS.ENERGIA;
   const nombrePestaña = sector === 'ENERGIA' ? 'ENERGÍA' : 'ALUMBRADO';
 
   try {
-    const doc = new GoogleSpreadsheet(spreadsheetId, serviceAccountAuth);
-    await doc.loadInfo();
-    const sheet = doc.sheetsByTitle[nombrePestaña];
-    if (!sheet) throw new Error(`No existe la pestaña "${nombrePestaña}"`);
+    const accessToken = await serviceAccountAuth.getAccessToken();
 
-    const rows = await sheet.getRows();
+    // Leemos desde fila 2 hasta 1000 (fila 1 = encabezados)
+    const rangeEncoded = encodeURIComponent(`'${nombrePestaña}'!A2:J1000`);
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${rangeEncoded}`;
 
-    const reclamos = rows.map((row, i) => ({
-      rowIndex:    i + 2, // fila real en la sheet (1 = encabezado, 2 = primera fila de datos)
-      id:          row.get('ID')          || '',
-      estado:      row.get('Estado')      || 'pendiente',
-      fecha:       row.get('Fecha')       || '',
-      origen:      row.get('Origen')      || '',
-      suministro:  row.get('Suministro')  || '',
-      nombre:      row.get('Nombre')      || '',
-      direccion:   row.get('Dirección')   || '',
-      telefono:    row.get('Teléfono')    || '',
-      descripcion: row.get('Descripción') || '',
-      gps:         row.get('GPS')         || '',
+    const response = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${accessToken.token}` }
+    });
+
+    if (!response.ok) {
+      const errData = await response.json();
+      console.error('❌ Error Sheets API:', JSON.stringify(errData));
+      return res.status(500).json({ ok: false, error: 'Error leyendo Google Sheets' });
+    }
+
+    const data = await response.json();
+    const filas = data.values || [];
+
+    // Mapear cada fila por índice de columna (0-based)
+    const reclamos = filas.map((fila, i) => ({
+      rowIndex:         i + 2,        // fila real en la sheet (fila 1 = encabezado)
+      id:               fila[0] || '',
+      estado:           fila[1] || 'pendiente',
+      fechaHora:        fila[2] || '',
+      desdeWhatsapp:    fila[3] || '',
+      suministro:       fila[4] || '',
+      nombre:           fila[5] || '',
+      direccion:        fila[6] || '',
+      telefonoContacto: fila[7] || '',
+      descripcion:      fila[8] || '',
+      marcaGPS:         fila[9] || '',
     }));
 
-    console.log(`📋 GET /reclamos — sector ${sector}: ${reclamos.length} filas devueltas`);
+    console.log(`📋 GET /reclamos — ${sector}: ${reclamos.length} reclamos devueltos`);
     return res.status(200).json({ ok: true, sector, reclamos });
 
   } catch (error) {
-    console.error('❌ Error leyendo reclamos:', error.message);
-    return res.status(500).json({ ok: false, error: 'Error leyendo Google Sheets' });
-  }
-});
-
-// =============================================
-// ENDPOINT: GET /reclamos?sector=ENERGIA|ALUMBRADO
-// Devuelve todas las filas con los nombres de columna
-// exactos de la Google Sheet.
-// =============================================
-app.get('/reclamos', async (req, res) => {
-  const sector = (req.query.sector || '').toUpperCase();
-
-  if (!['ENERGIA', 'ALUMBRADO'].includes(sector)) {
-    return res.status(400).json({ ok: false, error: 'Sector inválido. Usar ENERGIA o ALUMBRADO' });
-  }
-
-  const spreadsheetId = SHEET_IDS.ENERGIA; // Ambas pestañas están en el mismo sheet
-  const nombrePestaña = sector === 'ENERGIA' ? 'ENERGÍA' : 'ALUMBRADO';
-
-  try {
-    const doc = new GoogleSpreadsheet(spreadsheetId, serviceAccountAuth);
-    await doc.loadInfo();
-    const sheet = doc.sheetsByTitle[nombrePestaña];
-    if (!sheet) throw new Error(`No existe la pestaña "${nombrePestaña}"`);
-
-    const rows = await sheet.getRows();
-
-    const reclamos = rows.map((row, i) => ({
-      rowIndex:       i + 2,                          // fila real (1 = encabezado)
-      id:             row.get('ID')                  || '',
-      estado:         row.get('Estado')              || 'pendiente',
-      fechaHora:      row.get('Fecha y Hora')        || '',
-      desdeWhatsapp:  row.get('Desde WhatsApp')      || '',
-      suministro:     row.get('Suministro')          || '',
-      nombre:         row.get('Nombre')              || '',
-      direccion:      row.get('Dirección')           || '',
-      telefonoContacto: row.get('Teléfono Contacto') || '',
-      descripcion:    row.get('Descripción')         || '',
-      marcaGPS:       row.get('Marca GPS')           || '',
-    }));
-
-    console.log(`📋 GET /reclamos — ${sector}: ${reclamos.length} filas`);
-    return res.status(200).json({ ok: true, sector, reclamos });
-
-  } catch (error) {
-    console.error('❌ Error leyendo reclamos:', error.message);
-    return res.status(500).json({ ok: false, error: 'Error leyendo Google Sheets' });
+    console.error('❌ Error en GET /reclamos:', error.message);
+    return res.status(500).json({ ok: false, error: 'Error interno del servidor' });
   }
 });
 
 // =============================================
 // ENDPOINT: PATCH /reclamos/estado
-// Cambia la celda B(rowIndex) al nuevo estado.
+// Actualiza la celda B(rowIndex) con el nuevo estado.
 // Body JSON: { sector, rowIndex, estado }
 // =============================================
 app.patch('/reclamos/estado', async (req, res) => {
