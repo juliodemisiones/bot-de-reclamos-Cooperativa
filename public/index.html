@@ -490,12 +490,21 @@
       tbody.innerHTML = filas.map(r => {
         const estado = (r.estado || 'pendiente').toLowerCase();
 
-        // GPS
+        // GPS — siempre abre en Google Maps
         let gpsHtml = '<span style="color:var(--border)">—</span>';
         const g = (r.marcaGPS || '').trim();
         if (g) {
-          const url = g.startsWith('http') ? g : 'https://www.google.com/maps?q=' + encodeURIComponent(g);
-          gpsHtml = `<a href="${url}" target="_blank" class="gps-link">📍 ${g.startsWith('http') ? 'ver mapa' : g}</a>`;
+          let url, label;
+          if (g.startsWith('http')) {
+            // Ya es un link (maps, gis, etc.)
+            url   = g;
+            label = '📍 ver mapa';
+          } else {
+            // Coordenadas: "-26.806, -55.022" → link directo a Google Maps
+            url   = 'https://www.google.com/maps?q=' + encodeURIComponent(g);
+            label = '📍 ' + g;
+          }
+          gpsHtml = `<a href="${url}" target="_blank" rel="noopener" class="gps-link">${label}</a>`;
         }
 
         // Desde WhatsApp
@@ -628,7 +637,12 @@
         </div>
         <div class="modal-field">
           <div class="modal-field-label">Marca GPS</div>
-          <div class="modal-field-value mono">${r.marcaGPS || '—'}</div>
+          <div class="modal-field-value mono">${(() => {
+            const g = (r.marcaGPS || '').trim();
+            if (!g) return '—';
+            const url = g.startsWith('http') ? g : 'https://www.google.com/maps?q=' + encodeURIComponent(g);
+            return `<a href="${url}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">📍 ${g}</a>`;
+          })()}</div>
         </div>
         <div class="modal-field">
           <div class="modal-field-label">Desde WhatsApp</div>
