@@ -969,7 +969,108 @@ const guardado = await guardarUbicacion(waId, latitude, longitude);
     console.error('❌ Error procesando POST:', e.message, e.stack);
   }
 });
+// =============================================
+// ENDPOINT: GET /reclamos?sector=ENERGIA|ALUMBRADO
+// Devuelve todas las filas de la pestaña correspondiente
+// con su rowIndex para poder actualizar el estado.
+// =============================================
+app.get('/reclamos', async (req, res) => {
+  const sector = (req.query.sector || '').toUpperCase();
 
+  if (!['ENERGIA', 'ALUMBRADO'].includes(sector)) {
+    return res.status(400).json({ ok: false, error: 'Sector inválido. Usar ENERGIA o ALUMBRADO' });
+  }
+
+  const spreadsheetId = SHEET_IDS.ENERGIA; // Ambos están en el mismo sheet
+  const nombrePestaña = sector === 'ENERGIA' ? 'ENERGÍA' : 'ALUMBRADO';
+
+  try {
+    const doc = new GoogleSpreadsheet(spreadsheetId, serviceAccountAuth);
+    await doc.loadInfo();
+    const sheet = doc.sheetsByTitle[nombrePestaña];
+    if (!sheet) throw new Error(`No existe la pestaña "${nombrePestaña}"`);
+
+    const rows = await sheet.getRows();
+
+    const reclamos = rows.map((row, i) => ({
+      rowIndex:    i + 2, // fila real en la sheet (1 = encabezado, 2 = primera fila de datos)
+      id:          row.get('ID')          || '',
+      estado:      row.get('Estado')      || 'pendiente',
+      fecha:       row.get('Fecha')       || '',
+      origen:      row.get('Origen')      || '',
+      suministro:  row.get('Suministro')  || '',
+      nombre:      row.get('Nombre')      || '',
+      direccion:   row.get('Dirección')   || '',
+      telefono:    row.get('Teléfono')    || '',
+      descripcion: row.get('Descripción') || '',
+      gps:         row.get('GPS')         || '',
+    }));
+
+    console.log(`📋 GET /reclamos — sector ${sector}: ${reclamos.length} filas devueltas`);
+    return res.status(200).json({ ok: true, sector, reclamos });
+
+  } catch (error) {
+    console.error('❌ Error leyendo reclamos:', error.message);
+    return res.status(500).json({ ok: false, error: 'Error leyendo Google Sheets' });
+  }
+});
+
+// =============================================
+// ENDPOINT: PATCH /reclamos/estado
+// Cambia el estado de un reclamo en la celda B(rowIndex)
+// Body: { sector, rowIndex, estado }
+// =============================================
+app.patch('/reclamos/estado', async (req, res) => {
+  const { sector, rowIndex, estado } = req.body;
+
+  const estadosValidos = ['pendiente', 'atendido', 'derivado'];
+  if (!sector || !rowIndex || !estado) {
+    return res.status(400).json({ ok: false, error: 'Faltan campos: sector, rowIndex, estado' });
+  }
+  if (!estadosValidos.includes(estado.toLowerCase())) {
+    return res.status(400).json({ ok: false, error: `Estado inválido. Usar: ${estadosValidos.join(', ')}` });
+  }
+  const sectorNorm = sector.toUpperCase();
+  if (!['ENERGIA', 'ALUMBRADO'].includes(sectorNorm)) {
+    return res.status(400).json({ ok: false, error: 'Sector inválido. Usar ENERGIA o ALUMBRADO' });
+  }
+
+  const spreadsheetId = SHEET_IDS.ENERGIA;
+  const nombrePestaña = sectorNorm === 'ENERGIA' ? 'ENERGÍA' : 'ALUMBRADO';
+
+  try {
+    const accessToken = await serviceAccountAuth.getAccessToken();
+    const rangeEncoded = encodeURIComponent(`'${nombrePestaña}'!B${rowIndex}`);
+
+    const response = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${rangeEncoded}?valueInputOption=USER_ENTERED`,
+      {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${accessToken.token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          majorDimension: 'ROWS',
+          values: [[estado.toLowerCase()]]
+        })
+      }
+    );
+
+    if (!response.ok) {
+      const errData = await response.json();
+      console.error('❌ Error actualizando estado:', errData);
+      return res.status(500).json({ ok: false, error: 'Error al escribir en Google Sheets' });
+    }
+
+    console.log(`✅ PATCH /reclamos/estado — fila ${rowIndex} → "${estado}" en "${nombrePestaña}"`);
+    return res.status(200).json({ ok: true, rowIndex, estado });
+
+  } catch (error) {
+    console.error('❌ Error en PATCH /reclamos/estado:', error.message);
+    return res.status(500).json({ ok: false, error: 'Error interno del servidor' });
+  }
+});
 app.listen(PORT, () => {
   console.log(`🚀 Servidor Cooperativa en puerto ${PORT}`);
   iniciarBaileys().catch(e => console.error('❌ [Baileys] Error al iniciar:', e.message));
