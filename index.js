@@ -1016,9 +1016,55 @@ app.get('/reclamos', async (req, res) => {
 });
 
 // =============================================
+// ENDPOINT: GET /reclamos?sector=ENERGIA|ALUMBRADO
+// Devuelve todas las filas con los nombres de columna
+// exactos de la Google Sheet.
+// =============================================
+app.get('/reclamos', async (req, res) => {
+  const sector = (req.query.sector || '').toUpperCase();
+
+  if (!['ENERGIA', 'ALUMBRADO'].includes(sector)) {
+    return res.status(400).json({ ok: false, error: 'Sector inválido. Usar ENERGIA o ALUMBRADO' });
+  }
+
+  const spreadsheetId = SHEET_IDS.ENERGIA; // Ambas pestañas están en el mismo sheet
+  const nombrePestaña = sector === 'ENERGIA' ? 'ENERGÍA' : 'ALUMBRADO';
+
+  try {
+    const doc = new GoogleSpreadsheet(spreadsheetId, serviceAccountAuth);
+    await doc.loadInfo();
+    const sheet = doc.sheetsByTitle[nombrePestaña];
+    if (!sheet) throw new Error(`No existe la pestaña "${nombrePestaña}"`);
+
+    const rows = await sheet.getRows();
+
+    const reclamos = rows.map((row, i) => ({
+      rowIndex:       i + 2,                          // fila real (1 = encabezado)
+      id:             row.get('ID')                  || '',
+      estado:         row.get('Estado')              || 'pendiente',
+      fechaHora:      row.get('Fecha y Hora')        || '',
+      desdeWhatsapp:  row.get('Desde WhatsApp')      || '',
+      suministro:     row.get('Suministro')          || '',
+      nombre:         row.get('Nombre')              || '',
+      direccion:      row.get('Dirección')           || '',
+      telefonoContacto: row.get('Teléfono Contacto') || '',
+      descripcion:    row.get('Descripción')         || '',
+      marcaGPS:       row.get('Marca GPS')           || '',
+    }));
+
+    console.log(`📋 GET /reclamos — ${sector}: ${reclamos.length} filas`);
+    return res.status(200).json({ ok: true, sector, reclamos });
+
+  } catch (error) {
+    console.error('❌ Error leyendo reclamos:', error.message);
+    return res.status(500).json({ ok: false, error: 'Error leyendo Google Sheets' });
+  }
+});
+
+// =============================================
 // ENDPOINT: PATCH /reclamos/estado
-// Cambia el estado de un reclamo en la celda B(rowIndex)
-// Body: { sector, rowIndex, estado }
+// Cambia la celda B(rowIndex) al nuevo estado.
+// Body JSON: { sector, rowIndex, estado }
 // =============================================
 app.patch('/reclamos/estado', async (req, res) => {
   const { sector, rowIndex, estado } = req.body;
@@ -1030,6 +1076,7 @@ app.patch('/reclamos/estado', async (req, res) => {
   if (!estadosValidos.includes(estado.toLowerCase())) {
     return res.status(400).json({ ok: false, error: `Estado inválido. Usar: ${estadosValidos.join(', ')}` });
   }
+
   const sectorNorm = sector.toUpperCase();
   if (!['ENERGIA', 'ALUMBRADO'].includes(sectorNorm)) {
     return res.status(400).json({ ok: false, error: 'Sector inválido. Usar ENERGIA o ALUMBRADO' });
@@ -1059,11 +1106,11 @@ app.patch('/reclamos/estado', async (req, res) => {
 
     if (!response.ok) {
       const errData = await response.json();
-      console.error('❌ Error actualizando estado:', errData);
+      console.error('❌ Error actualizando estado en Sheets:', JSON.stringify(errData));
       return res.status(500).json({ ok: false, error: 'Error al escribir en Google Sheets' });
     }
 
-    console.log(`✅ PATCH /reclamos/estado — fila ${rowIndex} → "${estado}" en "${nombrePestaña}"`);
+    console.log(`✅ PATCH /reclamos/estado — "${nombrePestaña}" fila ${rowIndex} → "${estado}"`);
     return res.status(200).json({ ok: true, rowIndex, estado });
 
   } catch (error) {
