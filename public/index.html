@@ -3,110 +3,719 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Registro de Reclamos — Cooperativa</title>
+  <title>Reclamos — Cooperativa Luz y Fuerza</title>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css">
+  <style>
+    /* ── NAV TABS ── */
+    .tabs-nav {
+      width: 100%;
+      max-width: 960px;
+      display: flex;
+      gap: 0;
+      margin-bottom: 32px;
+      border-bottom: 1px solid var(--border);
+    }
+    .tab-btn {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      padding: 12px 20px;
+      cursor: pointer;
+      transition: color 0.2s, border-color 0.2s;
+      margin-bottom: -1px;
+    }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    /* ── PANELS ── */
+    .tab-panel { display: none; width: 100%; max-width: 960px; }
+    .tab-panel.active { display: block; }
+
+    /* El panel de registro mantiene max-width 640px internamente */
+    #panel-registro .card,
+    #panel-registro header { max-width: 640px; }
+
+    /* ── VISTA RECLAMOS ── */
+    .vista-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+    .vista-title {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+    .vista-controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .filtro-btn {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 7px 14px;
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .filtro-btn:hover { color: var(--text); border-color: var(--muted); }
+    .filtro-btn.active { background: var(--accent); color: #0f1117; border-color: var(--accent); font-weight: 600; }
+
+    .refresh-btn {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 7px 14px;
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .refresh-btn:hover { color: var(--text); border-color: var(--text); }
+    .refresh-btn.loading .refresh-icon { animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── FILTRO ESTADOS ── */
+    .estado-filtros {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .estado-chip {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 5px 12px;
+      border-radius: 100px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .estado-chip:hover { color: var(--text); }
+    .estado-chip.active-todos   { background: var(--surface); color: var(--text); border-color: var(--muted); }
+    .estado-chip.active-pendiente { background: #78350f; color: #fbbf24; border-color: #92400e; }
+    .estado-chip.active-atendido  { background: #14532d; color: #4ade80; border-color: #166534; }
+    .estado-chip.active-derivado  { background: #1e3a5f; color: #60a5fa; border-color: #1d4ed8; }
+
+    /* ── TABLA ── */
+    .tabla-wrapper {
+      width: 100%;
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 800px;
+    }
+    thead tr {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 12px 14px;
+      text-align: left;
+      white-space: nowrap;
+    }
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background 0.12s;
+    }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: rgba(255,255,255,0.03); }
+    td {
+      padding: 12px 14px;
+      font-size: 13px;
+      color: var(--text);
+      vertical-align: top;
+    }
+    td.mono {
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+    td.muted { color: var(--muted); font-size: 12px; }
+
+    /* ── BADGES ESTADO ── */
+    .badge {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 3px 10px;
+      border-radius: 100px;
+      display: inline-block;
+      white-space: nowrap;
+    }
+    .badge-pendiente { background: #78350f; color: #fbbf24; }
+    .badge-atendido  { background: #14532d; color: #4ade80; }
+    .badge-derivado  { background: #1e3a5f; color: #60a5fa; }
+
+    /* ── ACCIONES ── */
+    .acciones { display: flex; gap: 6px; flex-wrap: wrap; }
+    .btn-estado {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .btn-estado:hover { color: var(--text); border-color: var(--muted); }
+    .btn-atender { border-color: #166534; color: #4ade80; }
+    .btn-atender:hover { background: #14532d; color: #4ade80; border-color: #4ade80; }
+    .btn-derivar { border-color: #1d4ed8; color: #60a5fa; }
+    .btn-derivar:hover { background: #1e3a5f; color: #60a5fa; border-color: #60a5fa; }
+    .btn-pendiente { border-color: #92400e; color: #fbbf24; }
+    .btn-pendiente:hover { background: #78350f; color: #fbbf24; border-color: #fbbf24; }
+    .btn-estado:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── DESCRIPCION truncada ── */
+    .desc-cell {
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .desc-cell[title]:hover { cursor: help; }
+
+    /* ── GPS link ── */
+    .gps-link {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--accent);
+      text-decoration: none;
+    }
+    .gps-link:hover { text-decoration: underline; }
+
+    /* ── ESTADO VACÍO / CARGANDO ── */
+    .tabla-estado {
+      padding: 48px 24px;
+      text-align: center;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      letter-spacing: 0.1em;
+    }
+    .tabla-estado .icon { font-size: 28px; margin-bottom: 12px; }
+
+    /* ── COUNTER CHIPS ── */
+    .count-bar {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .count-item {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .count-num {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .count-num.c-pendiente { color: #fbbf24; }
+    .count-num.c-atendido  { color: #4ade80; }
+    .count-num.c-derivado  { color: #60a5fa; }
+
+    /* ── MODAL DETALLE ── */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+      max-width: 520px;
+      width: 100%;
+      position: relative;
+    }
+    .modal-close {
+      position: absolute;
+      top: 16px; right: 16px;
+      background: none; border: none;
+      color: var(--muted); font-size: 20px;
+      cursor: pointer; line-height: 1;
+    }
+    .modal-close:hover { color: var(--text); }
+    .modal-label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 16px;
+    }
+    .modal-field { margin-bottom: 12px; }
+    .modal-field-label {
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 2px;
+    }
+    .modal-field-value {
+      font-size: 14px;
+      color: var(--text);
+      word-break: break-word;
+    }
+    .modal-field-value.mono { font-family: var(--font-mono); }
+  </style>
 </head>
 <body>
 
-  <header>
+  <header style="max-width:960px;">
     <img src="img/logo-cooperativa.png" alt="Logo" class="logo-header">
     <div>
       <div class="header-tag">Sistema interno · Cooperativa Luz y Fuerza</div>
-      <h1>Registro de Reclamos</h1>
-      <p>Ingreso manual de reclamos por parte del personal de la cooperativa.</p>
+      <h1>Gestión de Reclamos</h1>
+      <p>Ingreso y seguimiento de reclamos del personal de la cooperativa.</p>
     </div>
   </header>
 
-  <div class="card">
-    <form id="formReclamo" novalidate>
+  <!-- TABS NAV -->
+  <nav class="tabs-nav">
+    <button class="tab-btn active" data-tab="registro">📋 Nuevo reclamo</button>
+    <button class="tab-btn" data-tab="energia">⚡ Energía</button>
+    <button class="tab-btn" data-tab="alumbrado">💡 Alumbrado</button>
+  </nav>
 
-      <p class="section-label">01 — Servicio</p>
-      <div class="field">
-        <label for="servicio">Servicio <span class="req">*</span></label>
-        <select id="servicio" name="servicio" required>
-          <option value="" disabled selected>Seleccionar servicio…</option>
-          <optgroup label="Sector Energía">
-            <option value="ENERGIA">Energía eléctrica</option>
-            <option value="ALUMBRADO">Alumbrado público</option>
-          </optgroup>
-          <optgroup label="Sector TIC">
-            <option value="INTERNET">Internet</option>
-            <option value="TELEVISION">Televisión</option>
-            <option value="TELEFONIA">Telefonía</option>
-          </optgroup>
-        </select>
-      </div>
+  <!-- ══════════════════════════════════════════
+       PANEL: REGISTRO (formulario original)
+  ══════════════════════════════════════════ -->
+  <div id="panel-registro" class="tab-panel active">
+    <div class="card">
+      <form id="formReclamo" novalidate>
 
-      <hr style="border: none; border-top: 1px solid var(--border); margin: 24px 0;" />
-
-      <p class="section-label">02 — Datos del solicitante</p>
-      <div class="grid-2">
-
+        <p class="section-label">01 — Servicio</p>
         <div class="field">
-          <label for="suministro">N° de suministro <span class="req">*</span></label>
-          <input type="text" id="suministro" name="suministro"
-                 placeholder="Ej: 12345" required />
+          <label for="servicio">Servicio <span class="req">*</span></label>
+          <select id="servicio" name="servicio" required>
+            <option value="" disabled selected>Seleccionar servicio…</option>
+            <optgroup label="Sector Energía">
+              <option value="ENERGIA">Energía eléctrica</option>
+              <option value="ALUMBRADO">Alumbrado público</option>
+            </optgroup>
+            <optgroup label="Sector TIC">
+              <option value="INTERNET">Internet</option>
+              <option value="TELEVISION">Televisión</option>
+              <option value="TELEFONIA">Telefonía</option>
+            </optgroup>
+          </select>
         </div>
 
+        <hr style="border:none; border-top:1px solid var(--border); margin:24px 0;" />
+
+        <p class="section-label">02 — Datos del solicitante</p>
+        <div class="grid-2">
+          <div class="field">
+            <label for="suministro">N° de suministro <span class="req">*</span></label>
+            <input type="text" id="suministro" name="suministro" placeholder="Ej: 12345" required />
+          </div>
+          <div class="field">
+            <label for="telefono">Teléfono <span class="opt">(opcional)</span></label>
+            <input type="text" id="telefono" name="telefono" placeholder="Ej: 3743 123456" />
+          </div>
+          <div class="field span-2">
+            <label for="nombre">Nombre y apellido <span class="req">*</span></label>
+            <input type="text" id="nombre" name="nombre" placeholder="Ej: Juan Pérez" required />
+          </div>
+          <div class="field span-2">
+            <label for="direccion">Dirección <span class="req">*</span></label>
+            <input type="text" id="direccion" name="direccion" placeholder="Ej: Av. Culmey 90" required />
+          </div>
+        </div>
+
+        <hr style="border:none; border-top:1px solid var(--border); margin:24px 0;" />
+
+        <p class="section-label">03 — Detalle del reclamo</p>
         <div class="field">
-          <label for="telefono">Teléfono <span class="opt">(opcional)</span></label>
-          <input type="text" id="telefono" name="telefono"
-                 placeholder="Ej: 3743 123456" />
+          <label for="descripcion">Descripción <span class="req">*</span></label>
+          <textarea id="descripcion" name="descripcion" placeholder="Describí el problema reportado…" required></textarea>
+        </div>
+        <div class="field">
+          <label for="gps">Ubicación GPS <span class="opt">(opcional - coordenadas lat,long o link a mapa)</span></label>
+          <input type="text" id="gps" name="gps" placeholder="Ej: -27.3617, -55.8961" />
         </div>
 
-        <div class="field span-2">
-          <label for="nombre">Nombre y apellido <span class="req">*</span></label>
-          <input type="text" id="nombre" name="nombre"
-                 placeholder="Ej: Juan Pérez" required />
-        </div>
+        <button type="submit" id="btnEnviar">Registrar reclamo</button>
+      </form>
+    </div>
+  </div>
 
-        <div class="field span-2">
-          <label for="direccion">Dirección <span class="req">*</span></label>
-          <input type="text" id="direccion" name="direccion"
-                 placeholder="Ej: Av. Culmey 90" required />
-        </div>
-
+  <!-- ══════════════════════════════════════════
+       PANEL: ENERGÍA
+  ══════════════════════════════════════════ -->
+  <div id="panel-energia" class="tab-panel">
+    <div class="vista-header">
+      <span class="vista-title">⚡ Reclamos — Energía eléctrica</span>
+      <div class="vista-controls">
+        <button class="refresh-btn" id="refresh-energia" onclick="cargarReclamos('ENERGIA')">
+          <span class="refresh-icon">↻</span> Actualizar
+        </button>
       </div>
+    </div>
+    <div class="count-bar" id="counts-ENERGIA"></div>
+    <div class="estado-filtros" id="filtros-ENERGIA">
+      <button class="estado-chip active-todos" data-filtro="todos" data-sector="ENERGIA" onclick="aplicarFiltroEstado(this,'ENERGIA')">Todos</button>
+      <button class="estado-chip" data-filtro="pendiente" data-sector="ENERGIA" onclick="aplicarFiltroEstado(this,'ENERGIA')">Pendiente</button>
+      <button class="estado-chip" data-filtro="atendido"  data-sector="ENERGIA" onclick="aplicarFiltroEstado(this,'ENERGIA')">Atendido</button>
+      <button class="estado-chip" data-filtro="derivado"  data-sector="ENERGIA" onclick="aplicarFiltroEstado(this,'ENERGIA')">Derivado</button>
+    </div>
+    <div class="tabla-wrapper">
+      <table id="tabla-ENERGIA">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Estado</th>
+            <th>Fecha / Hora</th>
+            <th>Suministro</th>
+            <th>Nombre</th>
+            <th>Dirección</th>
+            <th>Teléfono</th>
+            <th>Descripción</th>
+            <th>GPS</th>
+            <th>Origen</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="tbody-ENERGIA">
+          <tr><td colspan="11" class="tabla-estado"><div class="icon">⚡</div>Hacé click en Actualizar para cargar los reclamos.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
 
-      <hr style="border: none; border-top: 1px solid var(--border); margin: 24px 0;" />
-
-      <p class="section-label">03 — Detalle del reclamo</p>
-
-      <div class="field">
-        <label for="descripcion">Descripción <span class="req">*</span></label>
-        <textarea id="descripcion" name="descripcion"
-                  placeholder="Describí el problema reportado…" required></textarea>
+  <!-- ══════════════════════════════════════════
+       PANEL: ALUMBRADO
+  ══════════════════════════════════════════ -->
+  <div id="panel-alumbrado" class="tab-panel">
+    <div class="vista-header">
+      <span class="vista-title">💡 Reclamos — Alumbrado público</span>
+      <div class="vista-controls">
+        <button class="refresh-btn" id="refresh-ALUMBRADO" onclick="cargarReclamos('ALUMBRADO')">
+          <span class="refresh-icon">↻</span> Actualizar
+        </button>
       </div>
+    </div>
+    <div class="count-bar" id="counts-ALUMBRADO"></div>
+    <div class="estado-filtros" id="filtros-ALUMBRADO">
+      <button class="estado-chip active-todos" data-filtro="todos" data-sector="ALUMBRADO" onclick="aplicarFiltroEstado(this,'ALUMBRADO')">Todos</button>
+      <button class="estado-chip" data-filtro="pendiente" data-sector="ALUMBRADO" onclick="aplicarFiltroEstado(this,'ALUMBRADO')">Pendiente</button>
+      <button class="estado-chip" data-filtro="atendido"  data-sector="ALUMBRADO" onclick="aplicarFiltroEstado(this,'ALUMBRADO')">Atendido</button>
+      <button class="estado-chip" data-filtro="derivado"  data-sector="ALUMBRADO" onclick="aplicarFiltroEstado(this,'ALUMBRADO')">Derivado</button>
+    </div>
+    <div class="tabla-wrapper">
+      <table id="tabla-ALUMBRADO">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Estado</th>
+            <th>Fecha / Hora</th>
+            <th>Suministro</th>
+            <th>Nombre</th>
+            <th>Dirección</th>
+            <th>Teléfono</th>
+            <th>Descripción</th>
+            <th>GPS</th>
+            <th>Origen</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="tbody-ALUMBRADO">
+          <tr><td colspan="11" class="tabla-estado"><div class="icon">💡</div>Hacé click en Actualizar para cargar los reclamos.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
 
-      <div class="field">
-        <label for="gps">Ubicación GPS <span class="opt">(opcional - coordenadas lat,long o link a mapa de google o GIS)</span></label>
-        <input type="text" id="gps" name="gps"
-               placeholder="Ej: -27.3617, -55.8961" />
-      </div>
-
-      <button type="submit" id="btnEnviar">Registrar reclamo</button>
-
-    </form>
+  <!-- MODAL DETALLE -->
+  <div class="modal-overlay" id="modalOverlay" onclick="cerrarModal(event)">
+    <div class="modal">
+      <button class="modal-close" onclick="document.getElementById('modalOverlay').classList.remove('open')">✕</button>
+      <div class="modal-label" id="modal-label">Detalle del reclamo</div>
+      <div id="modal-body"></div>
+    </div>
   </div>
 
   <div id="toast"></div>
 
   <script>
-    const form  = document.getElementById('formReclamo');
-    const btn   = document.getElementById('btnEnviar');
-    const toast = document.getElementById('toast');
+    // ══════════════════════════════════════════
+    // TABS
+    // ══════════════════════════════════════════
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('panel-' + btn.dataset.tab).classList.add('active');
+      });
+    });
 
+    // ══════════════════════════════════════════
+    // TOAST
+    // ══════════════════════════════════════════
+    const toast = document.getElementById('toast');
     function mostrarToast(msg, tipo) {
       toast.textContent = msg;
-      toast.className   = `show ${tipo}`;
+      toast.className = `show ${tipo}`;
       setTimeout(() => { toast.className = ''; }, 4000);
     }
 
+    // ══════════════════════════════════════════
+    // ESTADO EN MEMORIA POR SECTOR
+    // ══════════════════════════════════════════
+    const datosReclamos = { ENERGIA: [], ALUMBRADO: [] };
+    const filtroActivo  = { ENERGIA: 'todos', ALUMBRADO: 'todos' };
+
+    // ══════════════════════════════════════════
+    // CARGAR RECLAMOS DESDE BACKEND
+    // ══════════════════════════════════════════
+    async function cargarReclamos(sector) {
+      const btn = document.getElementById('refresh-' + sector) ||
+                  document.getElementById('refresh-energia');
+      if (btn) btn.classList.add('loading');
+
+      const tbody = document.getElementById('tbody-' + sector);
+      tbody.innerHTML = `<tr><td colspan="11" class="tabla-estado"><div class="icon">⏳</div>Cargando reclamos…</td></tr>`;
+
+      try {
+        const resp = await fetch(`/reclamos?sector=${sector}`);
+        if (!resp.ok) throw new Error('Error ' + resp.status);
+        const data = await resp.json();
+        datosReclamos[sector] = data.reclamos || [];
+        renderTabla(sector);
+        renderCounts(sector);
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="11" class="tabla-estado"><div class="icon">❌</div>No se pudieron cargar los reclamos.<br><small>${err.message}</small></td></tr>`;
+        console.error(err);
+      } finally {
+        if (btn) btn.classList.remove('loading');
+      }
+    }
+
+    // ══════════════════════════════════════════
+    // RENDER TABLA
+    // ══════════════════════════════════════════
+    function renderTabla(sector) {
+      const tbody = document.getElementById('tbody-' + sector);
+      const filtro = filtroActivo[sector];
+      const filas = filtro === 'todos'
+        ? datosReclamos[sector]
+        : datosReclamos[sector].filter(r => (r.estado || '').toLowerCase() === filtro);
+
+      if (!filas.length) {
+        tbody.innerHTML = `<tr><td colspan="11" class="tabla-estado"><div class="icon">🔍</div>No hay reclamos${filtro !== 'todos' ? ' con estado "' + filtro + '"' : ''}.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = filas.map(r => {
+        const estado = (r.estado || 'pendiente').toLowerCase();
+        const badgeClass = `badge-${estado}`;
+
+        // GPS: si tiene coordenadas o link
+        let gpsHtml = '<span style="color:var(--border)">—</span>';
+        if (r.gps && r.gps.trim()) {
+          const g = r.gps.trim();
+          if (g.startsWith('http')) {
+            gpsHtml = `<a href="${g}" target="_blank" class="gps-link">📍 ver</a>`;
+          } else {
+            const coordUrl = `https://www.google.com/maps?q=${encodeURIComponent(g)}`;
+            gpsHtml = `<a href="${coordUrl}" target="_blank" class="gps-link">📍 ${g}</a>`;
+          }
+        }
+
+        // Origen: si es un número lo mostramos como WhatsApp
+        const origenRaw = r.origen || '';
+        const origenHtml = origenRaw === 'oficina'
+          ? '<span style="color:var(--muted);font-size:11px">🖥️ oficina</span>'
+          : `<span style="color:var(--muted);font-size:11px">📱 ${origenRaw}</span>`;
+
+        // Botones según estado actual
+        const botonesAccion = generarBotones(r, sector);
+
+        return `<tr>
+          <td class="mono" style="color:var(--accent)">#${r.id}</td>
+          <td><span class="badge ${badgeClass}">${estado}</span></td>
+          <td class="muted" style="white-space:nowrap;font-size:11px">${r.fecha || '—'}</td>
+          <td class="mono">${r.suministro || '—'}</td>
+          <td style="min-width:120px">${r.nombre || '—'}</td>
+          <td style="min-width:120px;font-size:12px;color:var(--muted)">${r.direccion || '—'}</td>
+          <td class="mono" style="font-size:11px">${r.telefono || '—'}</td>
+          <td><div class="desc-cell" title="${(r.descripcion || '').replace(/"/g,'&quot;')}" onclick="abrirModal(${JSON.stringify(r).replace(/</g,'&lt;')})">${r.descripcion || '—'}</div></td>
+          <td>${gpsHtml}</td>
+          <td>${origenHtml}</td>
+          <td><div class="acciones">${botonesAccion}</div></td>
+        </tr>`;
+      }).join('');
+    }
+
+    function generarBotones(r, sector) {
+      const estado = (r.estado || 'pendiente').toLowerCase();
+      const btns = [];
+      if (estado !== 'atendido')
+        btns.push(`<button class="btn-estado btn-atender" onclick="cambiarEstado('${sector}',${r.rowIndex},'atendido',this)">✓ Atender</button>`);
+      if (estado !== 'derivado')
+        btns.push(`<button class="btn-estado btn-derivar" onclick="cambiarEstado('${sector}',${r.rowIndex},'derivado',this)">→ Derivar</button>`);
+      if (estado !== 'pendiente')
+        btns.push(`<button class="btn-estado btn-pendiente" onclick="cambiarEstado('${sector}',${r.rowIndex},'pendiente',this)">↩ Pendiente</button>`);
+      return btns.join('');
+    }
+
+    // ══════════════════════════════════════════
+    // CONTADORES
+    // ══════════════════════════════════════════
+    function renderCounts(sector) {
+      const reclamos = datosReclamos[sector];
+      const pendiente = reclamos.filter(r => (r.estado||'').toLowerCase() === 'pendiente').length;
+      const atendido  = reclamos.filter(r => (r.estado||'').toLowerCase() === 'atendido').length;
+      const derivado  = reclamos.filter(r => (r.estado||'').toLowerCase() === 'derivado').length;
+      document.getElementById('counts-' + sector).innerHTML = `
+        <div class="count-item"><span class="count-num">${reclamos.length}</span> total</div>
+        <div class="count-item"><span class="count-num c-pendiente">${pendiente}</span> pendientes</div>
+        <div class="count-item"><span class="count-num c-atendido">${atendido}</span> atendidos</div>
+        <div class="count-item"><span class="count-num c-derivado">${derivado}</span> derivados</div>
+      `;
+    }
+
+    // ══════════════════════════════════════════
+    // FILTRO POR ESTADO
+    // ══════════════════════════════════════════
+    function aplicarFiltroEstado(btn, sector) {
+      document.querySelectorAll(`[data-sector="${sector}"]`).forEach(b => {
+        b.className = 'estado-chip';
+      });
+      const filtro = btn.dataset.filtro;
+      btn.classList.add('active-' + filtro);
+      filtroActivo[sector] = filtro;
+      renderTabla(sector);
+    }
+
+    // ══════════════════════════════════════════
+    // CAMBIAR ESTADO
+    // ══════════════════════════════════════════
+    async function cambiarEstado(sector, rowIndex, nuevoEstado, btnEl) {
+      const todosBtn = btnEl.closest('.acciones').querySelectorAll('button');
+      todosBtn.forEach(b => b.disabled = true);
+
+      try {
+        const resp = await fetch('/reclamos/estado', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sector, rowIndex, estado: nuevoEstado })
+        });
+        const data = await resp.json();
+        if (resp.ok && data.ok) {
+          mostrarToast(`✔ Estado actualizado a "${nuevoEstado}"`, 'success');
+          await cargarReclamos(sector);
+        } else {
+          mostrarToast(`Error: ${data.error || 'No se pudo actualizar'}`, 'error');
+          todosBtn.forEach(b => b.disabled = false);
+        }
+      } catch (err) {
+        mostrarToast('Error de conexión.', 'error');
+        todosBtn.forEach(b => b.disabled = false);
+      }
+    }
+
+    // ══════════════════════════════════════════
+    // MODAL DETALLE
+    // ══════════════════════════════════════════
+    function abrirModal(reclamo) {
+      // Si se llama desde onclick puede venir como string
+      const r = typeof reclamo === 'string' ? JSON.parse(reclamo) : reclamo;
+      document.getElementById('modal-label').textContent = `Reclamo #${r.id}`;
+      document.getElementById('modal-body').innerHTML = `
+        <div class="modal-field"><div class="modal-field-label">Estado</div>
+          <div class="modal-field-value"><span class="badge badge-${(r.estado||'pendiente').toLowerCase()}">${r.estado||'pendiente'}</span></div></div>
+        <div class="modal-field"><div class="modal-field-label">Fecha y hora</div>
+          <div class="modal-field-value mono">${r.fecha||'—'}</div></div>
+        <div class="modal-field"><div class="modal-field-label">Nombre</div>
+          <div class="modal-field-value">${r.nombre||'—'}</div></div>
+        <div class="modal-field"><div class="modal-field-label">N° Suministro</div>
+          <div class="modal-field-value mono">${r.suministro||'—'}</div></div>
+        <div class="modal-field"><div class="modal-field-label">Dirección</div>
+          <div class="modal-field-value">${r.direccion||'—'}</div></div>
+        <div class="modal-field"><div class="modal-field-label">Teléfono</div>
+          <div class="modal-field-value mono">${r.telefono||'—'}</div></div>
+        <div class="modal-field"><div class="modal-field-label">Descripción</div>
+          <div class="modal-field-value">${r.descripcion||'—'}</div></div>
+        <div class="modal-field"><div class="modal-field-label">GPS</div>
+          <div class="modal-field-value mono">${r.gps||'—'}</div></div>
+        <div class="modal-field"><div class="modal-field-label">Origen</div>
+          <div class="modal-field-value mono">${r.origen||'—'}</div></div>
+      `;
+      document.getElementById('modalOverlay').classList.add('open');
+    }
+
+    function cerrarModal(e) {
+      if (e.target === document.getElementById('modalOverlay')) {
+        document.getElementById('modalOverlay').classList.remove('open');
+      }
+    }
+
+    // ══════════════════════════════════════════
+    // FORMULARIO REGISTRO (original)
+    // ══════════════════════════════════════════
+    const form = document.getElementById('formReclamo');
+    const btn  = document.getElementById('btnEnviar');
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-
-      // Validación de campos obligatorios
       const requeridos = ['servicio', 'suministro', 'nombre', 'direccion', 'descripcion'];
       const faltante = requeridos.find(id => !document.getElementById(id).value.trim());
       if (faltante) {
@@ -114,11 +723,8 @@
         document.getElementById(faltante).focus();
         return;
       }
-
-      // Estado cargando
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner"></span>Registrando…';
-
       const payload = {
         servicio:    document.getElementById('servicio').value.trim(),
         suministro:  document.getElementById('suministro').value.trim(),
@@ -128,23 +734,19 @@
         descripcion: document.getElementById('descripcion').value.trim(),
         gps:         document.getElementById('gps').value.trim(),
       };
-
       try {
         const resp = await fetch('/reclamo-web', {
-          method:  'POST',
+          method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify(payload)
+          body: JSON.stringify(payload)
         });
-
         const data = await resp.json();
-
         if (resp.ok && data.ok) {
           mostrarToast(`✔ Reclamo registrado — ID ${data.id}`, 'success');
           form.reset();
         } else {
           mostrarToast(`Error: ${data.error || 'No se pudo registrar'}`, 'error');
         }
-
       } catch (err) {
         mostrarToast('Error de conexión con el servidor.', 'error');
         console.error(err);
@@ -154,6 +756,5 @@
       }
     });
   </script>
-
 </body>
 </html>
