@@ -124,10 +124,50 @@
       transition: all 0.15s;
     }
     .estado-chip:hover { color: var(--text); border-color: var(--muted); }
-    .estado-chip.f-todos     { background: var(--surface); color: var(--text); border-color: var(--muted); }
-    .estado-chip.f-pendiente { background: #78350f; color: #fbbf24; border-color: #92400e; }
-    .estado-chip.f-atendido  { background: #14532d; color: #4ade80; border-color: #166534; }
-    .estado-chip.f-derivado  { background: #1e3a5f; color: #60a5fa; border-color: #1d4ed8; }
+    .estado-chip.f-pendientes { background: #78350f; color: #fbbf24; border-color: #92400e; }
+    .estado-chip.f-atendidos  { background: #14532d; color: #4ade80; border-color: #166534; }
+    .estado-chip.f-derivados  { background: #1e3a5f; color: #60a5fa; border-color: #1d4ed8; }
+
+    /* ── AUTO-REFRESH indicator ── */
+    .refresh-info {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .refresh-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--success);
+      animation: pulse-dot 2s ease-in-out infinite;
+    }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.25; }
+    }
+
+    /* ── BOTÓN COPIAR ── */
+    .btn-copiar {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 5px 10px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.13s;
+      white-space: nowrap;
+      width: 100%;
+      text-align: left;
+      margin-top: 2px;
+    }
+    .btn-copiar:hover  { color: var(--accent); border-color: var(--accent); }
+    .btn-copiar.copiado { color: #4ade80; border-color: #166534; }
 
     /* ── TABLA ── */
     .tabla-wrapper {
@@ -349,17 +389,19 @@
   <div id="panel-energia" class="tab-panel">
     <div class="vista-header">
       <span class="vista-title">⚡ Reclamos — Energía eléctrica</span>
-      <button class="refresh-btn" id="refresh-ENERGIA" onclick="cargarReclamos('ENERGIA')">
-        <span class="refresh-icon">↻</span> Actualizar
-      </button>
+      <div style="display:flex;align-items:center;gap:14px;">
+        <div class="refresh-info"><div class="refresh-dot"></div> auto · cada 60 s</div>
+        <button class="refresh-btn" id="refresh-ENERGIA" onclick="cargarReclamos('ENERGIA')">
+          <span class="refresh-icon">↻</span> Actualizar
+        </button>
+      </div>
     </div>
     <div class="count-bar" id="counts-ENERGIA"></div>
     <div class="filtros-row">
       <span class="filtros-label">Filtrar:</span>
-      <button class="estado-chip f-todos"   data-filtro="todos"     data-sector="ENERGIA" onclick="aplicarFiltro(this,'ENERGIA')">Todos</button>
-      <button class="estado-chip"           data-filtro="pendiente" data-sector="ENERGIA" onclick="aplicarFiltro(this,'ENERGIA')">Pendiente</button>
-      <button class="estado-chip"           data-filtro="atendido"  data-sector="ENERGIA" onclick="aplicarFiltro(this,'ENERGIA')">Atendido</button>
-      <button class="estado-chip"           data-filtro="derivado"  data-sector="ENERGIA" onclick="aplicarFiltro(this,'ENERGIA')">Derivado</button>
+      <button class="estado-chip f-pendientes" data-filtro="pendiente" data-sector="ENERGIA" onclick="aplicarFiltro(this,'ENERGIA')">Pendientes</button>
+      <button class="estado-chip"              data-filtro="atendido"  data-sector="ENERGIA" onclick="aplicarFiltro(this,'ENERGIA')">Atendidos</button>
+      <button class="estado-chip"              data-filtro="derivado"  data-sector="ENERGIA" onclick="aplicarFiltro(this,'ENERGIA')">Derivados</button>
     </div>
     <div class="tabla-wrapper">
       <table>
@@ -386,17 +428,19 @@
   <div id="panel-alumbrado" class="tab-panel">
     <div class="vista-header">
       <span class="vista-title">💡 Reclamos — Alumbrado público</span>
-      <button class="refresh-btn" id="refresh-ALUMBRADO" onclick="cargarReclamos('ALUMBRADO')">
-        <span class="refresh-icon">↻</span> Actualizar
-      </button>
+      <div style="display:flex;align-items:center;gap:14px;">
+        <div class="refresh-info"><div class="refresh-dot"></div> auto · cada 60 s</div>
+        <button class="refresh-btn" id="refresh-ALUMBRADO" onclick="cargarReclamos('ALUMBRADO')">
+          <span class="refresh-icon">↻</span> Actualizar
+        </button>
+      </div>
     </div>
     <div class="count-bar" id="counts-ALUMBRADO"></div>
     <div class="filtros-row">
       <span class="filtros-label">Filtrar:</span>
-      <button class="estado-chip f-todos"   data-filtro="todos"     data-sector="ALUMBRADO" onclick="aplicarFiltro(this,'ALUMBRADO')">Todos</button>
-      <button class="estado-chip"           data-filtro="pendiente" data-sector="ALUMBRADO" onclick="aplicarFiltro(this,'ALUMBRADO')">Pendiente</button>
-      <button class="estado-chip"           data-filtro="atendido"  data-sector="ALUMBRADO" onclick="aplicarFiltro(this,'ALUMBRADO')">Atendido</button>
-      <button class="estado-chip"           data-filtro="derivado"  data-sector="ALUMBRADO" onclick="aplicarFiltro(this,'ALUMBRADO')">Derivado</button>
+      <button class="estado-chip f-pendientes" data-filtro="pendiente" data-sector="ALUMBRADO" onclick="aplicarFiltro(this,'ALUMBRADO')">Pendientes</button>
+      <button class="estado-chip"              data-filtro="atendido"  data-sector="ALUMBRADO" onclick="aplicarFiltro(this,'ALUMBRADO')">Atendidos</button>
+      <button class="estado-chip"              data-filtro="derivado"  data-sector="ALUMBRADO" onclick="aplicarFiltro(this,'ALUMBRADO')">Derivados</button>
     </div>
     <div class="tabla-wrapper">
       <table>
@@ -451,7 +495,7 @@
 
     // ── ESTADO EN MEMORIA ──
     const datosReclamos = { ENERGIA: [], ALUMBRADO: [] };
-    const filtroActivo  = { ENERGIA: 'todos', ALUMBRADO: 'todos' };
+    const filtroActivo  = { ENERGIA: 'pendiente', ALUMBRADO: 'pendiente' };
 
     // ── CARGAR DESDE BACKEND ──
     async function cargarReclamos(sector) {
@@ -473,17 +517,24 @@
       }
     }
 
+    // ── AUTO-REFRESH cada 60 segundos para el panel activo ──
+    setInterval(() => {
+      const tabActiva = document.querySelector('.tab-btn.active');
+      if (!tabActiva) return;
+      const tab = tabActiva.dataset.tab;
+      if (tab === 'energia')   cargarReclamos('ENERGIA');
+      if (tab === 'alumbrado') cargarReclamos('ALUMBRADO');
+    }, 60000);
+
     // ── RENDER TABLA ──
     function renderTabla(sector) {
       const tbody = document.getElementById('tbody-' + sector);
       const filtro = filtroActivo[sector];
-      const filas = filtro === 'todos'
-        ? datosReclamos[sector]
-        : datosReclamos[sector].filter(r => (r.estado || '').toLowerCase() === filtro);
+      const filas = datosReclamos[sector].filter(r => (r.estado || 'pendiente').toLowerCase() === filtro);
 
       if (!filas.length) {
-        const msg = filtro !== 'todos' ? ` con estado "${filtro}"` : '';
-        tbody.innerHTML = `<tr><td colspan="10" class="tabla-estado"><div class="icon">🔍</div>No hay reclamos${msg}.</td></tr>`;
+        const labels = { pendiente: 'Pendientes', atendido: 'Atendidos', derivado: 'Derivados' };
+        tbody.innerHTML = `<tr><td colspan="10" class="tabla-estado"><div class="icon">🔍</div>No hay reclamos ${labels[filtro] || filtro}.</td></tr>`;
         return;
       }
 
@@ -518,7 +569,10 @@
 
         return `<tr>
           <td class="col-acciones">
-            <div class="acciones">${generarBotones(r, sector, estado)}</div>
+            <div class="acciones">
+              ${generarBotones(r, sector, estado)}
+              <button class="btn-copiar" onclick="copiarReclamo(this, '${rEscaped}')">⎘ Copiar datos</button>
+            </div>
           </td>
           <td>
             <span class="mono" style="color:var(--accent);font-weight:600">#${r.id}</span><br>
@@ -553,6 +607,38 @@
       return btns.join('');
     }
 
+    // ── COPIAR DATOS DEL RECLAMO ──
+    function copiarReclamo(btn, rStr) {
+      const r = typeof rStr === 'string' ? JSON.parse(rStr) : rStr;
+      const gps = (r.marcaGPS || '').trim();
+      const gpsLink = gps
+        ? (gps.startsWith('http') ? gps : 'https://www.google.com/maps?q=' + encodeURIComponent(gps))
+        : '—';
+      const texto = [
+        `🔴 Reclamo #${r.id}`,
+        `📋 Estado: ${r.estado || 'pendiente'}`,
+        `📅 Fecha: ${r.fechaHora || '—'}`,
+        `👤 Nombre: ${r.nombre || '—'}`,
+        `🔌 Suministro: ${r.suministro || '—'}`,
+        `📍 Dirección: ${r.direccion || '—'}`,
+        `📞 Teléfono: ${r.telefonoContacto || '—'}`,
+        `💬 Descripción: ${r.descripcion || '—'}`,
+        `🗺️ GPS: ${gpsLink}`,
+        `📱 Desde WhatsApp: ${r.desdeWhatsapp || '—'}`,
+      ].join('\n');
+
+      navigator.clipboard.writeText(texto).then(() => {
+        btn.textContent = '✔ Copiado';
+        btn.classList.add('copiado');
+        setTimeout(() => {
+          btn.textContent = '⎘ Copiar datos';
+          btn.classList.remove('copiado');
+        }, 2000);
+      }).catch(() => {
+        mostrarToast('No se pudo copiar al portapapeles.', 'error');
+      });
+    }
+
     // ── CONTADORES ──
     function renderCounts(sector) {
       const rs = datosReclamos[sector];
@@ -572,7 +658,9 @@
         b.className = 'estado-chip';
       });
       const filtro = btn.dataset.filtro;
-      btn.classList.add('f-' + filtro);
+      // clases en plural: f-pendientes, f-atendidos, f-derivados
+      const clasePorFiltro = { pendiente: 'f-pendientes', atendido: 'f-atendidos', derivado: 'f-derivados' };
+      btn.classList.add(clasePorFiltro[filtro] || 'f-pendientes');
       filtroActivo[sector] = filtro;
       renderTabla(sector);
     }
