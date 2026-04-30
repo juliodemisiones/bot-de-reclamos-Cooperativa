@@ -170,14 +170,41 @@
     .btn-copiar.copiado { color: #4ade80; border-color: #166534; }
 
     /* ── TABLA ── */
+    .tabla-outer {
+      width: 100%;
+    }
+    /* Barra de scroll espejo — arriba */
+    .scroll-top {
+      width: 100%;
+      overflow-x: auto;
+      overflow-y: hidden;
+      height: 12px;
+      margin-bottom: 2px;
+    }
+    .scroll-top-inner {
+      height: 1px; /* solo necesita el ancho, no altura real */
+    }
     .tabla-wrapper {
       width: 100%;
       overflow-x: auto;
       border: 1px solid var(--border);
       border-radius: var(--radius);
+      /* limitar altura para que el thead quede fijo con muchos reclamos */
+      max-height: 72vh;
+      overflow-y: auto;
     }
     table { width: 100%; border-collapse: collapse; min-width: 900px; }
-    thead tr { background: var(--surface); border-bottom: 1px solid var(--border); }
+    thead tr {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    /* thead sticky — se queda arriba al hacer scroll vertical */
+    thead th {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: var(--surface);
+    }
     th {
       font-family: var(--font-mono);
       font-size: 10px;
@@ -403,24 +430,27 @@
       <button class="estado-chip"              data-filtro="atendido"  data-sector="ENERGIA" onclick="aplicarFiltro(this,'ENERGIA')">Atendidos</button>
       <button class="estado-chip"              data-filtro="derivado"  data-sector="ENERGIA" onclick="aplicarFiltro(this,'ENERGIA')">Derivados</button>
     </div>
-    <div class="tabla-wrapper">
-      <table>
-        <thead><tr>
-          <th>Acciones</th>
-          <th>ID</th>
-          <th>Fecha y Hora</th>
-          <th>Suministro</th>
-          <th>Nombre</th>
-          <th>Dirección</th>
-          <th>Tel. Contacto</th>
-          <th>Descripción</th>
-          <th>Marca GPS</th>
-          <th>Desde WhatsApp</th>
-        </tr></thead>
-        <tbody id="tbody-ENERGIA">
-          <tr><td colspan="10" class="tabla-estado"><div class="icon">⚡</div>Hacé click en Actualizar para cargar los reclamos.</td></tr>
-        </tbody>
-      </table>
+    <div class="tabla-outer" id="outer-ENERGIA">
+      <div class="scroll-top" id="scrolltop-ENERGIA"><div class="scroll-top-inner" id="scrolltop-inner-ENERGIA"></div></div>
+      <div class="tabla-wrapper" id="wrapper-ENERGIA">
+        <table>
+          <thead><tr>
+            <th>Acciones</th>
+            <th>ID</th>
+            <th>Fecha y Hora</th>
+            <th>Suministro</th>
+            <th>Nombre</th>
+            <th>Dirección</th>
+            <th>Tel. Contacto</th>
+            <th>Descripción</th>
+            <th>Marca GPS</th>
+            <th>Desde WhatsApp</th>
+          </tr></thead>
+          <tbody id="tbody-ENERGIA">
+            <tr><td colspan="10" class="tabla-estado"><div class="icon">⚡</div>Hacé click en Actualizar para cargar los reclamos.</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 
@@ -442,24 +472,27 @@
       <button class="estado-chip"              data-filtro="atendido"  data-sector="ALUMBRADO" onclick="aplicarFiltro(this,'ALUMBRADO')">Atendidos</button>
       <button class="estado-chip"              data-filtro="derivado"  data-sector="ALUMBRADO" onclick="aplicarFiltro(this,'ALUMBRADO')">Derivados</button>
     </div>
-    <div class="tabla-wrapper">
-      <table>
-        <thead><tr>
-          <th>Acciones</th>
-          <th>ID</th>
-          <th>Fecha y Hora</th>
-          <th>Suministro</th>
-          <th>Nombre</th>
-          <th>Dirección</th>
-          <th>Tel. Contacto</th>
-          <th>Descripción</th>
-          <th>Marca GPS</th>
-          <th>Desde WhatsApp</th>
-        </tr></thead>
-        <tbody id="tbody-ALUMBRADO">
-          <tr><td colspan="10" class="tabla-estado"><div class="icon">💡</div>Hacé click en Actualizar para cargar los reclamos.</td></tr>
-        </tbody>
-      </table>
+    <div class="tabla-outer" id="outer-ALUMBRADO">
+      <div class="scroll-top" id="scrolltop-ALUMBRADO"><div class="scroll-top-inner" id="scrolltop-inner-ALUMBRADO"></div></div>
+      <div class="tabla-wrapper" id="wrapper-ALUMBRADO">
+        <table>
+          <thead><tr>
+            <th>Acciones</th>
+            <th>ID</th>
+            <th>Fecha y Hora</th>
+            <th>Suministro</th>
+            <th>Nombre</th>
+            <th>Dirección</th>
+            <th>Tel. Contacto</th>
+            <th>Descripción</th>
+            <th>Marca GPS</th>
+            <th>Desde WhatsApp</th>
+          </tr></thead>
+          <tbody id="tbody-ALUMBRADO">
+            <tr><td colspan="10" class="tabla-estado"><div class="icon">💡</div>Hacé click en Actualizar para cargar los reclamos.</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 
@@ -791,6 +824,45 @@
         btnEnviar.disabled = false;
         btnEnviar.innerHTML = 'Registrar reclamo';
       }
+    });
+
+    // ── SCROLL ESPEJO: sincroniza barra superior con la tabla ──
+    function iniciarScrollEspejo(sector) {
+      const wrapper  = document.getElementById('wrapper-' + sector);
+      const scrollTop = document.getElementById('scrolltop-' + sector);
+      const inner    = document.getElementById('scrolltop-inner-' + sector);
+      if (!wrapper || !scrollTop || !inner) return;
+
+      // Ajustar el ancho del inner al contenido real de la tabla
+      function actualizarAncho() {
+        inner.style.width = wrapper.scrollWidth + 'px';
+      }
+      actualizarAncho();
+      new ResizeObserver(actualizarAncho).observe(wrapper);
+
+      // Sincronizar en ambas direcciones sin loop
+      let ignorarWrapper = false, ignorarTop = false;
+      wrapper.addEventListener('scroll', () => {
+        if (ignorarWrapper) return;
+        ignorarTop = true;
+        scrollTop.scrollLeft = wrapper.scrollLeft;
+        setTimeout(() => ignorarTop = false, 20);
+      });
+      scrollTop.addEventListener('scroll', () => {
+        if (ignorarTop) return;
+        ignorarWrapper = true;
+        wrapper.scrollLeft = scrollTop.scrollLeft;
+        setTimeout(() => ignorarWrapper = false, 20);
+      });
+    }
+
+    // Iniciar espejo cuando se activa cada pestaña
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tab = btn.dataset.tab;
+        if (tab === 'energia')   setTimeout(() => iniciarScrollEspejo('ENERGIA'),   50);
+        if (tab === 'alumbrado') setTimeout(() => iniciarScrollEspejo('ALUMBRADO'), 50);
+      });
     });
   </script>
 </body>
