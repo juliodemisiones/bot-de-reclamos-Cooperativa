@@ -526,6 +526,9 @@
       if (tab === 'alumbrado') cargarReclamos('ALUMBRADO');
     }, 60000);
 
+    // ── CACHE DE OBJETOS para copiar/modal sin pasar JSON en onclick ──
+    const reclamoCache = {};   // reclamoCache['ENERGIA_5'] = { ...reclamo }
+
     // ── RENDER TABLA ──
     function renderTabla(sector) {
       const tbody = document.getElementById('tbody-' + sector);
@@ -540,22 +543,16 @@
 
       tbody.innerHTML = filas.map(r => {
         const estado = (r.estado || 'pendiente').toLowerCase();
+        // Guardar en cache con clave sector+rowIndex
+        const cacheKey = sector + '_' + r.rowIndex;
+        reclamoCache[cacheKey] = r;
 
         // GPS — siempre abre en Google Maps
         let gpsHtml = '<span style="color:var(--border)">—</span>';
         const g = (r.marcaGPS || '').trim();
         if (g) {
-          let url, label;
-          if (g.startsWith('http')) {
-            // Ya es un link (maps, gis, etc.)
-            url   = g;
-            label = '📍 ver mapa';
-          } else {
-            // Coordenadas: "-26.806, -55.022" → link directo a Google Maps
-            url   = 'https://www.google.com/maps?q=' + encodeURIComponent(g);
-            label = '📍 ' + g;
-          }
-          gpsHtml = `<a href="${url}" target="_blank" rel="noopener" class="gps-link">${label}</a>`;
+          const url = g.startsWith('http') ? g : 'https://www.google.com/maps?q=' + encodeURIComponent(g);
+          gpsHtml = `<a href="${url}" target="_blank" rel="noopener" class="gps-link">📍 ${g.startsWith('http') ? 'ver mapa' : g}</a>`;
         }
 
         // Desde WhatsApp
@@ -564,14 +561,11 @@
         if (wa === 'oficina') waHtml = `<span style="color:var(--muted);font-size:11px">🖥️ oficina</span>`;
         else if (wa)          waHtml = `<span class="mono" style="font-size:11px">📱 ${wa}</span>`;
 
-        // Serializar para modal — doble escape de comillas simples
-        const rEscaped = JSON.stringify(r).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-
         return `<tr>
           <td class="col-acciones">
             <div class="acciones">
               ${generarBotones(r, sector, estado)}
-              <button class="btn-copiar" onclick="copiarReclamo(this, '${rEscaped}')">⎘ Copiar datos</button>
+              <button class="btn-copiar" onclick="copiarReclamo(this,'${sector}',${r.rowIndex})">⎘ Copiar datos</button>
             </div>
           </td>
           <td>
@@ -586,7 +580,7 @@
           <td>
             <div class="desc-cell"
               title="${(r.descripcion || '').replace(/"/g, '&quot;')}"
-              onclick="abrirModal('${rEscaped}')">
+              onclick="abrirModalPorClave('${sector}',${r.rowIndex})">
               ${r.descripcion || '—'}
             </div>
           </td>
@@ -607,13 +601,16 @@
       return btns.join('');
     }
 
-    // ── COPIAR DATOS DEL RECLAMO ──
-    function copiarReclamo(btn, rStr) {
-      const r = typeof rStr === 'string' ? JSON.parse(rStr) : rStr;
+    // ── COPIAR DATOS — lee del cache, sin JSON en onclick ──
+    function copiarReclamo(btn, sector, rowIndex) {
+      const r = reclamoCache[sector + '_' + rowIndex];
+      if (!r) { mostrarToast('No se encontraron los datos.', 'error'); return; }
+
       const gps = (r.marcaGPS || '').trim();
       const gpsLink = gps
         ? (gps.startsWith('http') ? gps : 'https://www.google.com/maps?q=' + encodeURIComponent(gps))
         : '—';
+
       const texto = [
         `🔴 Reclamo #${r.id}`,
         `📋 Estado: ${r.estado || 'pendiente'}`,
@@ -637,6 +634,12 @@
       }).catch(() => {
         mostrarToast('No se pudo copiar al portapapeles.', 'error');
       });
+    }
+
+    // ── MODAL — también usa el cache ──
+    function abrirModalPorClave(sector, rowIndex) {
+      const r = reclamoCache[sector + '_' + rowIndex];
+      if (r) abrirModal(r);
     }
 
     // ── CONTADORES ──
