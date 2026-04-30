@@ -7,6 +7,16 @@
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css">
   <style>
+    /* ── SCROLLBARS OSCURAS ── */
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) var(--bg);
+    }
+    *::-webkit-scrollbar { width: 6px; height: 6px; }
+    *::-webkit-scrollbar-track { background: var(--bg); }
+    *::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    *::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
     /* ── NAV TABS ── */
     .tabs-nav {
       width: 100%;
@@ -295,6 +305,46 @@
       letter-spacing: 0.1em;
     }
     .tabla-estado .icon { font-size: 28px; margin-bottom: 12px; }
+
+    /* ── MOBILE: texto y botones más grandes ── */
+    @media (max-width: 768px) {
+      /* Celdas de la tabla */
+      td { font-size: 17px; padding: 13px 10px; }
+      td.mono { font-size: 16px; }
+      td.dim  { font-size: 15px; }
+      th {
+        font-size: 13px;
+        padding: 13px 10px;
+      }
+      /* Botones de acción */
+      .btn-accion {
+        font-size: 14px;
+        padding: 9px 13px;
+      }
+      /* Botón copiar */
+      .btn-copiar {
+        font-size: 14px;
+        padding: 9px 13px;
+      }
+      /* Badge estado */
+      .badge {
+        font-size: 12px;
+        padding: 4px 10px;
+      }
+      /* ID del reclamo */
+      .mono[style*="accent"] { font-size: 16px; }
+      /* GPS link */
+      .gps-link { font-size: 14px; }
+      /* Descripción truncada */
+      .desc-cell { font-size: 15px; max-width: 140px; }
+      /* Chips de filtro */
+      .estado-chip { font-size: 13px; padding: 8px 16px; }
+      /* Contadores */
+      .count-num { font-size: 24px; }
+      .count-item { font-size: 13px; }
+      /* Altura máxima tabla en móvil */
+      .tabla-wrapper { max-height: 65vh; }
+    }
 
     /* ── MODAL ── */
     .modal-overlay {
