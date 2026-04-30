@@ -331,17 +331,21 @@
         font-size: 12px;
         padding: 4px 10px;
       }
-      /* ID del reclamo */
-      .mono[style*="accent"] { font-size: 16px; }
       /* GPS link */
       .gps-link { font-size: 14px; }
       /* Descripción truncada */
       .desc-cell { font-size: 15px; max-width: 140px; }
-      /* Chips de filtro */
-      .estado-chip { font-size: 13px; padding: 8px 16px; }
-      /* Contadores */
-      .count-num { font-size: 24px; }
-      .count-item { font-size: 13px; }
+
+      /* Contadores — en una sola línea, más compactos */
+      .count-bar { gap: 12px; flex-wrap: nowrap; }
+      .count-num { font-size: 18px; }
+      .count-item { font-size: 11px; gap: 4px; }
+
+      /* Chips de filtro — en una sola línea */
+      .filtros-row { flex-wrap: nowrap; gap: 6px; }
+      .estado-chip { font-size: 11px; padding: 6px 12px; white-space: nowrap; }
+      .filtros-label { display: none; } /* quitar "FILTRAR:" para ganar espacio */
+
       /* Altura máxima tabla en móvil */
       .tabla-wrapper { max-height: 65vh; }
     }
